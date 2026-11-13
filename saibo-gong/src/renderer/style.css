@@ -45,7 +45,6 @@ main { flex: 1; overflow: auto; display: grid; grid-template-columns: minmax(0, 
 .plaque { position: absolute; top: 4%; left: 50%; transform: translateX(-50%); padding: 2px 26px; background: #14100c; border: 3px solid var(--gold); color: var(--gold); font-size: clamp(16px, 2.6vw, 26px); letter-spacing: .5em; text-indent: .5em; border-radius: 4px; }
 .curtain { position: absolute; top: 0; width: 13%; height: 62%; background: repeating-linear-gradient(90deg, #8f1d14 0 12px, #6f140d 12px 24px); border-bottom: 6px solid var(--gold-dim); }
 .curtain.left { left: 0; border-radius: 0 0 60% 0; } .curtain.right { right: 0; border-radius: 0 0 0 60%; }
-.niche { position: absolute; top: 20%; left: 50%; transform: translateX(-50%); width: 20%; height: 34%; border: 2px solid var(--gold-dim); border-radius: 50% 50% 4px 4px / 30% 30% 4px 4px; background: #1a0906; display: grid; place-items: center; text-align: center; color: #6e4a3a; font-size: clamp(10px, 1.3vw, 13px); letter-spacing: .2em; }
 .burner { position: absolute; top: 55%; left: 50%; transform: translateX(-50%); width: 9%; height: 7%; background: linear-gradient(#caa24a, #7a5a1e); border-radius: 4px 4px 40% 40%; }
 .burner i { position: absolute; bottom: 100%; width: 2px; height: 160%; background: linear-gradient(#ff8a3c 0 8%, #b33 8% 100%); }
 .burner i:nth-child(1) { left: 30%; } .burner i:nth-child(2) { left: 50%; height: 190%; } .burner i:nth-child(3) { left: 70%; }
