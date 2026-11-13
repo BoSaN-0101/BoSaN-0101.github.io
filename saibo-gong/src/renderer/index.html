@@ -22,6 +22,7 @@
 
 <main>
   <section class="hall">
+    <div id="ritual-banner" class="ritual-banner" hidden></div>
     <div class="stage" id="stage">
       <div class="scene" aria-hidden="true">
         <div class="plaque">賽博宮</div>
@@ -40,6 +41,7 @@
       <span class="spacer"></span>
       <button id="btn-auto" class="btn">代為擲筊</button>
       <button id="btn-defy" class="btn danger" hidden>硬闖</button>
+      <button id="btn-giveup" class="btn ghost" hidden>作罷</button>
       <button id="btn-drill" class="btn ghost" title="照 push 的規矩走一遍：三次為限，擲不到可硬闖。演練不記功過簿。">演練 push 儀式</button>
     </div>
   </section>
@@ -48,7 +50,9 @@
     <section class="card">
       <h2>今日農民曆</h2>
       <p id="today" class="big"></p>
-      <p class="muted">宜忌待 M2 請出農民曆後顯示。</p>
+      <p id="lunar" class="muted"></p>
+      <p id="kaishi" class="badge" hidden>今日忌開市，不宜正式上線</p>
+      <dl class="yiji"><dt class="yi">宜</dt><dd id="yi"></dd><dt class="ji">忌</dt><dd id="ji"></dd></dl>
     </section>
     <section class="card">
       <h2>綠色乖乖</h2>
@@ -57,6 +61,7 @@
     <section class="card">
       <h2>擲筊統計</h2>
       <div class="stats" id="stats"></div>
+      <p id="push-stats" class="muted"></p>
     </section>
     <section class="card" id="card-confess">
       <h2>懺悔文長度</h2>
@@ -68,6 +73,20 @@
       <ul id="recent" class="recent"></ul>
     </section>
   </aside>
+
+  <section class="card push">
+    <h2>擲筊 push</h2>
+    <p id="hook-status" class="muted"></p>
+    <ul id="hook-repos" class="repos"></ul>
+    <div class="row">
+      <button id="btn-hook-repo" class="btn">為某個 repo 安裝</button>
+      <button id="btn-hook-global" class="btn">全域安裝</button>
+      <span class="spacer"></span>
+      <label for="protected">正式上線的分支</label>
+      <input id="protected" type="text" spellcheck="false" autocomplete="off">
+    </div>
+    <p id="hook-msg" class="muted" role="status"></p>
+  </section>
 
   <section class="card features">
     <h2>各殿功能</h2>
@@ -87,8 +106,7 @@
 </dialog>
 
 <dialog id="dlg-confess" class="dlg">
-  <header><h2>懺悔文</h2><span id="confess-title" class="muted"></span></header>
-  <p class="muted">逐字打完才放行。不能貼上，打錯要改正。</p>
+  <header><h2>懺悔文</h2></header>
   <p id="confess-text" class="confess-text"></p>
   <textarea id="confess-input" rows="5" spellcheck="false" autocomplete="off" placeholder="在這裡照著打"></textarea>
   <footer>
@@ -96,6 +114,16 @@
     <span class="spacer"></span>
     <button id="confess-cancel" class="btn ghost">作罷</button>
     <button id="confess-ok" class="btn danger" disabled>弟子知錯，硬闖</button>
+  </footer>
+</dialog>
+
+<dialog id="dlg-confirm" class="dlg">
+  <header><h2 id="confirm-title"></h2></header>
+  <p id="confirm-body" class="confirm-body"></p>
+  <footer>
+    <span class="spacer"></span>
+    <button id="confirm-cancel" class="btn ghost">取消</button>
+    <button id="confirm-ok" class="btn">確定</button>
   </footer>
 </dialog>
 

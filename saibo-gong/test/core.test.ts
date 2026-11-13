@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { mkdtempSync, readFileSync, writeFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { throwPoe, judge } from '../src/core/poe.ts';
+import { throwPoe, judge, SHENG_CHANCE } from '../src/core/poe.ts';
 import { Ledger } from '../src/core/ledger.ts';
 import { CONFESSIONS, CONFESSION_LENGTHS, pickConfession, isConfessionComplete, correctPrefixLength } from '../src/core/confession.ts';
 import { Store } from '../src/core/store.ts';
@@ -18,13 +18,13 @@ test('擲筊：判定規則', () => {
   assert.equal(judge(['round', 'round']), 'yin');
 });
 
-test('擲筊：機率約為 1/2、1/4、1/4', () => {
+test('擲筊：機率符合設定（聖筊 SHENG_CHANCE，笑筊陰筊平分其餘）', () => {
   const n = 40000;
   const c = { sheng: 0, xiao: 0, yin: 0 };
   for (let i = 0; i < n; i++) c[throwPoe().result]++;
-  assert.ok(Math.abs(c.sheng / n - 0.5) < 0.02, `聖筊 ${c.sheng / n}`);
-  assert.ok(Math.abs(c.xiao / n - 0.25) < 0.02, `笑筊 ${c.xiao / n}`);
-  assert.ok(Math.abs(c.yin / n - 0.25) < 0.02, `陰筊 ${c.yin / n}`);
+  assert.ok(Math.abs(c.sheng / n - SHENG_CHANCE) < 0.02, `聖筊 ${c.sheng / n}`);
+  assert.ok(Math.abs(c.xiao / n - (1 - SHENG_CHANCE) / 2) < 0.02, `笑筊 ${c.xiao / n}`);
+  assert.ok(Math.abs(c.yin / n - (1 - SHENG_CHANCE) / 2) < 0.02, `陰筊 ${c.yin / n}`);
 });
 
 test('功過簿：正常新增後驗證通過', () => {
@@ -114,6 +114,35 @@ test('統計：擲筊結果會累計', () => {
   const s = new Store(dir);
   s.recordThrow('sheng');
   s.recordThrow('yin');
-  assert.deepEqual(new Store(dir).getStats(), { throws: 2, sheng: 1, xiao: 0, yin: 1 });
+  assert.deepEqual(new Store(dir).getStats(), { throws: 2, sheng: 1, xiao: 0, yin: 1, pushes: 0, pushBlessed: 0, pushDefied: 0, pushAbandoned: 0, pushAbsent: 0 });
   rmSync(dir, { recursive: true });
+});
+
+import { getAlmanac, toTraditional } from '../src/core/almanac.ts';
+import { parsePrePushInput, releaseTargets, parseBranchList, repoName } from '../src/core/push.ts';
+
+test('農民曆：轉成繁體，並判斷忌開市', () => {
+  const a = getAlmanac(new Date(2026, 10, 13));
+  assert.equal(a.lunar, '丙午年（馬）十月初五');
+  assert.ok(a.yi.includes('開市'));
+  assert.equal(a.jiKaishi, false);
+  assert.equal(toTraditional('开市 纳财 修坟'), '開市 納財 修墳');
+  // 六年內每一天的宜忌都不能殘留常見簡體字，而且確實有忌開市的日子
+  let ji = 0;
+  for (let d = new Date(2024, 0, 1); d < new Date(2030, 0, 1); d.setDate(d.getDate() + 1)) {
+    const x = getAlmanac(d);
+    if (x.jiKaishi) ji++;
+    assert.doesNotMatch([...x.yi, ...x.ji, x.lunar].join(''), /[开纳进动门马无财产发种谢启坟斋订车庙归宁学医竖盖丧会亲机涂馀桥绘坏诸猎仓帐经络扫挂补渔饰墙养厕针货词讼结网佣寿习艺筑问断蚁龙鸡闰腊殓钻]/);
+  }
+  assert.ok(ji > 300);
+});
+
+test('push：解析 hook 輸入並判斷是否正式上線', () => {
+  const z = '0'.repeat(40);
+  const refs = parsePrePushInput(`refs/heads/dev ${z} refs/heads/dev ${z}\nrefs/heads/main ${z} refs/heads/main ${z}\r\nrefs/tags/v1 ${z} refs/tags/v1 ${z}\n\n`);
+  assert.equal(refs.length, 3);
+  assert.deepEqual(releaseTargets(refs, ['main', 'master']), ['分支 main', 'tag v1']);
+  assert.deepEqual(releaseTargets(refs.slice(0, 1), ['main']), []);
+  assert.deepEqual(parseBranchList('main, master，release  prod'), ['main', 'master', 'release', 'prod']);
+  assert.equal(repoName('C:\\Users\\x\\my repo\\'), 'my repo');
 });

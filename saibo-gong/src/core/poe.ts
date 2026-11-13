@@ -1,6 +1,5 @@
 // 擲筊引擎：結果由亂數決定，動畫只是演出。
-// 每個筊各自獨立，朝上的那一面是「平」或「凸」，機率各半，
-// 所以聖筊（一平一凸）1/2、笑筊（兩平）1/4、陰筊（兩凸）1/4。
+// 機率可調：聖筊（一平一凸）SHENG_CHANCE，其餘由笑筊（兩平）和陰筊（兩凸）平分。
 
 export type PoeFace = 'flat' | 'round';
 export type PoeResult = 'sheng' | 'xiao' | 'yin';
@@ -16,12 +15,16 @@ export const POE_NAMES: Record<PoeResult, string> = {
   yin: '陰筊',
 };
 
-export type RandomBit = () => 0 | 1;
+/** 擲出聖筊的機率。真實的筊是 1/2，這裡調低一點，讓神明比較常說不。 */
+export const SHENG_CHANCE = 0.4;
 
-export const cryptoBit: RandomBit = () => {
-  const buf = new Uint8Array(1);
+/** 回傳 [0, 1) 的亂數。 */
+export type Random = () => number;
+
+export const cryptoRandom: Random = () => {
+  const buf = new Uint32Array(1);
   globalThis.crypto.getRandomValues(buf);
-  return (buf[0] & 1) as 0 | 1;
+  return buf[0] / 2 ** 32;
 };
 
 export function judge(faces: [PoeFace, PoeFace]): PoeResult {
@@ -30,7 +33,11 @@ export function judge(faces: [PoeFace, PoeFace]): PoeResult {
 }
 
 /** 擲一次，回傳結果。 */
-export function throwPoe(bit: RandomBit = cryptoBit): PoeThrow {
-  const faces: [PoeFace, PoeFace] = [bit() ? 'flat' : 'round', bit() ? 'flat' : 'round'];
+export function throwPoe(random: Random = cryptoRandom): PoeThrow {
+  const r = random();
+  let faces: [PoeFace, PoeFace];
+  if (r < SHENG_CHANCE) faces = random() < 0.5 ? ['flat', 'round'] : ['round', 'flat'];
+  else if (r < SHENG_CHANCE + (1 - SHENG_CHANCE) / 2) faces = ['flat', 'flat'];
+  else faces = ['round', 'round'];
   return { faces, result: judge(faces) };
 }

@@ -11,6 +11,21 @@ const api: TempleApi = {
   pickConfession: () => ipcRenderer.invoke('confession:pick'),
   setConfessionLength: (length) => ipcRenderer.invoke('confession:setLength', length),
   markConfessionHintShown: () => ipcRenderer.invoke('confession:hintShown'),
+  setProtectedBranches: (text) => ipcRenderer.invoke('push:setProtected', text),
+  getHookStatus: () => ipcRenderer.invoke('hook:status'),
+  chooseFolder: () => ipcRenderer.invoke('hook:chooseFolder'),
+  installRepoHook: (dir) => ipcRenderer.invoke('hook:installRepo', dir),
+  uninstallRepoHook: (dir) => ipcRenderer.invoke('hook:uninstallRepo', dir),
+  installGlobalHook: () => ipcRenderer.invoke('hook:installGlobal'),
+  uninstallGlobalHook: () => ipcRenderer.invoke('hook:uninstallGlobal'),
+  pullRitual: () => ipcRenderer.invoke('ritual:pull'),
+  finishRitual: (id, outcome) => ipcRenderer.invoke('ritual:finish', id, outcome),
+  onRitualStart: (cb) => {
+    ipcRenderer.on('ritual:start', (_e, r) => cb(r));
+  },
+  onRitualCancel: (cb) => {
+    ipcRenderer.on('ritual:cancel', (_e, id) => cb(id));
+  },
   onStateChanged: (cb) => {
     ipcRenderer.on('state:changed', (_e, s) => cb(s));
   },

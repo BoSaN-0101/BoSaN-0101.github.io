@@ -3,6 +3,7 @@
 
 import { throwPoe } from '../core/poe.ts';
 import { pickConfession, type ConfessionLength } from '../core/confession.ts';
+import { getAlmanac } from '../core/almanac.ts';
 import type { TempleApi, TempleState } from '../shared/api.ts';
 import type { LedgerEntry } from '../core/ledger.ts';
 
@@ -12,7 +13,7 @@ export function createMock(): TempleApi {
   const add = (action: string, target: string, confession = '') =>
     entries.push({ seq: entries.length + 1, time: new Date().toISOString(), feature: '主殿', action, target, confession, prevHash: '', hash: '' });
   if (q.has('seed')) { add('閉廟', '全部功能'); add('硬闖', 'demo/repo', '弟子愚昧……'); }
-  const stats = { throws: 0, sheng: 0, xiao: 0, yin: 0 };
+  const stats = { throws: 0, sheng: 0, xiao: 0, yin: 0, pushes: 0, pushBlessed: 0, pushDefied: 0, pushAbandoned: 0, pushAbsent: 0 };
   let closed = q.has('closed');
   let confessionLength: ConfessionLength = 'medium';
   let confessionHintShown = false;
@@ -31,6 +32,8 @@ export function createMock(): TempleApi {
     dataDir: '（瀏覽器預覽，不存檔）',
     confessionLength,
     confessionHintShown,
+    almanac: getAlmanac(q.has('ji') ? new Date(2026, 10, 14) : new Date()),
+    protectedBranches: ['main', 'master'],
   });
   const emit = () => { const s = state(); listener?.(s); return s; };
   const forced = q.get('force');
@@ -48,6 +51,18 @@ export function createMock(): TempleApi {
     pickConfession: async () => pickConfession(confessionLength),
     setConfessionLength: async (l) => { confessionLength = l; return emit(); },
     markConfessionHintShown: async () => { confessionHintShown = true; return emit(); },
+    setProtectedBranches: async () => emit(),
+    getHookStatus: async () => ({ gitAvailable: true, global: false, repos: q.has('seed') ? [{ path: 'C:/work/demo', installed: true }] : [] }),
+    chooseFolder: async () => null,
+    installRepoHook: async () => ({ ok: true, message: '（預覽）' }),
+    uninstallRepoHook: async () => ({ ok: true, message: '（預覽）' }),
+    installGlobalHook: async () => ({ ok: true, message: '（預覽）' }),
+    uninstallGlobalHook: async () => ({ ok: true, message: '（預覽）' }),
+    pullRitual: async () =>
+      q.has('ritual') ? { id: 'demo', repo: 'demo', refs: 'main', almanacBlock: q.has('ji') ? '今日忌開市，不宜正式上線（分支 main）' : null, poe: true, maxThrows: 3 } : null,
+    finishRitual: async () => {},
+    onRitualStart: () => {},
+    onRitualCancel: () => {},
     onStateChanged: (cb) => { listener = cb; },
   };
 }

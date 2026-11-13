@@ -4,12 +4,15 @@ import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from '
 import { join } from 'node:path';
 import type { PoeResult } from './poe.ts';
 import { DEFAULT_CONFESSION_LENGTH, type ConfessionLength } from './confession.ts';
+import { DEFAULT_PROTECTED } from './push.ts';
 
 export interface Settings {
   closed: boolean; // 閉廟中
   features: Record<string, boolean>;
   confessionLength: ConfessionLength;
   confessionHintShown: boolean; // 第一次打完懺悔文後的「可調整長度」提示是否已出現過
+  protectedBranches: string[]; // push 到這些分支算「正式上線」
+  hookRepos: string[]; // 個別安裝了擲筊 push 的 repo
 }
 
 export interface Stats {
@@ -17,10 +20,17 @@ export interface Stats {
   sheng: number;
   xiao: number;
   yin: number;
+  pushes: number; // 經過主殿的 push 次數
+  pushBlessed: number; // 擲到聖筊放行
+  pushDefied: number; // 硬闖
+  pushAbandoned: number; // 作罷
+  pushAbsent: number; // 神明不在，放行
 }
 
-const DEFAULT_SETTINGS: Settings = { closed: false, features: {}, confessionLength: DEFAULT_CONFESSION_LENGTH, confessionHintShown: false };
-const DEFAULT_STATS: Stats = { throws: 0, sheng: 0, xiao: 0, yin: 0 };
+export type PushOutcome = 'pushBlessed' | 'pushDefied' | 'pushAbandoned' | 'pushAbsent';
+
+const DEFAULT_SETTINGS: Settings = { closed: false, features: {}, confessionLength: DEFAULT_CONFESSION_LENGTH, confessionHintShown: false, protectedBranches: DEFAULT_PROTECTED, hookRepos: [] };
+const DEFAULT_STATS: Stats = { throws: 0, sheng: 0, xiao: 0, yin: 0, pushes: 0, pushBlessed: 0, pushDefied: 0, pushAbandoned: 0, pushAbsent: 0 };
 
 function readJson<T>(file: string, fallback: T): T {
   if (!existsSync(file)) return structuredClone(fallback);
@@ -67,6 +77,14 @@ export class Store {
     const s = this.getStats();
     s.throws += 1;
     s[result] += 1;
+    writeJson(this.dir, this.statsFile, s);
+    return s;
+  }
+
+  recordPush(outcome: PushOutcome): Stats {
+    const s = this.getStats();
+    s.pushes += 1;
+    s[outcome] += 1;
     writeJson(this.dir, this.statsFile, s);
     return s;
   }
