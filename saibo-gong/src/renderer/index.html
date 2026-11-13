@@ -88,6 +88,18 @@
     <p id="hook-msg" class="muted" role="status"></p>
   </section>
 
+  <section class="card fortune">
+    <h2>籤詩 code review</h2>
+    <div class="row">
+      <select id="fortune-repo" aria-label="要抽籤的 repo"></select>
+      <button id="btn-fortune" class="btn">抽籤</button>
+      <span class="spacer"></span>
+      <label><input id="auto-fortune" type="checkbox"> push 前自動抽籤（只顯示，不擋）</label>
+    </div>
+    <p id="fortune-last" class="muted"></p>
+    <p id="fortune-msg" class="muted" role="status"></p>
+  </section>
+
   <section class="card features">
     <h2>各殿功能</h2>
     <ul id="features"></ul>
@@ -115,6 +127,23 @@
     <button id="confess-cancel" class="btn ghost">作罷</button>
     <button id="confess-ok" class="btn danger" disabled>弟子知錯，硬闖</button>
   </footer>
+</dialog>
+
+<dialog id="dlg-fortune" class="dlg wide fortune-dlg">
+  <header><h2 id="f-title">籤詩</h2><span id="f-sub" class="muted"></span><span class="spacer"></span><button class="btn small" data-close>收起</button></header>
+  <div class="f-body">
+    <div id="f-poem" class="poem"></div>
+    <p id="f-nodraw" class="warn" hidden></p>
+    <section id="f-jie-sec"><h3>解曰</h3><ul id="f-jie"></ul></section>
+    <section id="f-issues-sec"><h3>白話 <span id="f-count" class="muted"></span></h3>
+      <div class="tablewrap"><table>
+        <thead><tr><th>位置</th><th>等級</th><th>規則</th><th>問題（檢查工具原文）</th></tr></thead>
+        <tbody id="f-issues"></tbody>
+      </table></div>
+    </section>
+    <section id="f-names-sec"><h3>宜改名</h3><ul id="f-names" class="names"></ul><p id="f-names-note" class="muted"></p></section>
+    <section><h3>審視範圍</h3><ul id="f-tools" class="tools"></ul></section>
+  </div>
 </dialog>
 
 <dialog id="dlg-confirm" class="dlg">

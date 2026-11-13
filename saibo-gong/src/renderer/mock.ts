@@ -34,6 +34,8 @@ export function createMock(): TempleApi {
     confessionHintShown,
     almanac: getAlmanac(q.has('ji') ? new Date(2026, 10, 14) : new Date()),
     protectedBranches: ['main', 'master'],
+    autoFortune: false,
+    fortuneRepos: [],
   });
   const emit = () => { const s = state(); listener?.(s); return s; };
   const forced = q.get('force');
@@ -58,6 +60,10 @@ export function createMock(): TempleApi {
     uninstallRepoHook: async () => ({ ok: true, message: '（預覽）' }),
     installGlobalHook: async () => ({ ok: true, message: '（預覽）' }),
     uninstallGlobalHook: async () => ({ ok: true, message: '（預覽）' }),
+    drawFortune: async () => ({ ok: false as const, message: '（預覽模式不能抽籤）' }),
+    getLastFortune: async () => null,
+    setAutoFortune: async () => emit(),
+    onFortune: () => {},
     pullRitual: async () =>
       q.has('ritual') ? { id: 'demo', repo: 'demo', refs: 'main', almanacBlock: q.has('ji') ? '今日忌開市，不宜正式上線（分支 main）' : null, poe: true, maxThrows: 3 } : null,
     finishRitual: async () => {},

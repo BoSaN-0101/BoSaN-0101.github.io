@@ -126,3 +126,30 @@ tr.broken td { background: rgba(192, 57, 43, .25); }
 #hook-msg.bad { color: var(--bad); } #hook-msg.ok { color: var(--ok); }
 .confirm-body { white-space: pre-line; margin: 6px 0; }
 .badge.calm { background: transparent; border-color: var(--line); color: var(--muted); }
+
+.fortune { grid-column: 1 / -1; }
+.row select { font: inherit; font-size: 13px; min-width: 260px; max-width: 100%; padding: 4px 8px; background: var(--bg); color: var(--text); border: 1px solid var(--line); border-radius: 6px; }
+.row label input { vertical-align: -2px; accent-color: var(--gold); }
+#fortune-msg.bad { color: var(--bad); }
+.link { background: none; border: 0; padding: 0; font: inherit; color: var(--gold); text-decoration: underline; cursor: pointer; }
+.fortune-dlg .f-body { overflow: auto; max-height: 72vh; padding-right: 4px; }
+.fortune-dlg h3 { font-size: 14px; color: var(--gold); letter-spacing: .15em; margin: 14px 0 6px; }
+.poem { display: flex; flex-direction: row-reverse; justify-content: center; gap: 22px; padding: 14px 0; background: #f4e6c8; color: #3a1a10; border: 6px double #a3261a; border-radius: 6px; }
+.poem span { display: flex; flex-direction: column; align-items: center; font-size: 22px; line-height: 1.4; }
+.poem i { font-style: normal; display: block; }
+#f-jie li, .names li, .tools li { padding: 3px 0; font-size: 14px; }
+#f-jie li:first-child { color: var(--gold); }
+.sev { white-space: nowrap; } .sev.error { color: var(--bad); } .sev.warning { color: var(--gold); }
+.names b { color: var(--bad); font-family: Consolas, monospace; font-weight: normal; }
+.tools .missing, .tools .error { color: var(--bad); }
+.fortune-dlg td:nth-child(1) { font-family: Consolas, monospace; font-size: 12px; white-space: nowrap; }
+.fortune-dlg td:nth-child(3) { font-family: Consolas, monospace; font-size: 12px; white-space: nowrap; color: var(--muted); }
+.fortune-dlg .tablewrap { max-height: none; }
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--line); border-radius: 5px; }
+::-webkit-scrollbar-thumb:hover { background: var(--gold-dim); }
+/* 右側欄比主殿高，讓擲筊 push 和籤詩兩張卡片補在主殿下方，不留空白。 */
+.side { grid-column: 2; grid-row: 1 / span 3; }
+.push, .fortune { grid-column: 1; }
+@media (max-width: 860px) { .side { grid-column: 1; grid-row: auto; } }

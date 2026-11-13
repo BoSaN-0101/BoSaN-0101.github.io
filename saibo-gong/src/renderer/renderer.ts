@@ -3,6 +3,8 @@ import { createMock } from './mock.ts';
 import { POE_NAMES, type PoeResult, type PoeThrow } from '../core/poe.ts';
 import { CONFESSION_LENGTHS, correctPrefixLength, normalizeTyped } from '../core/confession.ts';
 import type { ConfessionPrompt, Defiance, RitualRequest, TempleApi, TempleState } from '../shared/api.ts';
+import type { FortuneReport } from '../core/fortune.ts';
+import { SEVERITY_NAMES } from '../core/fortune-names.ts';
 import type { LedgerEntry } from '../core/ledger.ts';
 
 declare global {
@@ -103,6 +105,24 @@ function render(s: TempleState): void {
     seg.append(b);
   }
 
+  // 籤詩：可選的 repo
+  const sel = $<HTMLSelectElement>('fortune-repo');
+  const keep = sel.value;
+  sel.replaceChildren();
+  for (const p of s.fortuneRepos) {
+    const o = el('option', p);
+    o.value = p;
+    sel.append(o);
+  }
+  const other = el('option', '選擇其他資料夾…');
+  other.value = '';
+  sel.append(other);
+  if (keep && [...sel.options].some((o) => o.value === keep)) sel.value = keep;
+  $<HTMLInputElement>('auto-fortune').checked = s.autoFortune;
+  const fortuneOn = s.features.some((f) => f.id === 'fortune' && f.enabled) && !s.closed;
+  $<HTMLButtonElement>('btn-fortune').disabled = !fortuneOn;
+  $<HTMLInputElement>('auto-fortune').disabled = !fortuneOn;
+
   const prot = $<HTMLInputElement>('protected');
   if (document.activeElement !== prot) prot.value = s.protectedBranches.join(', ');
 
@@ -161,6 +181,12 @@ function updateControls(): void {
   banner.hidden = !r?.req;
   if (r?.req) {
     banner.replaceChildren('git push 求神明准許：', el('b', `${r.req.repo} → ${r.req.refs}`));
+    // push 前自動抽的籤，放在這裡隨時可看，不打斷擲筊。
+    if (lastFortune && lastFortune.repo === r.req.repo) {
+      const b = el('button', `看籤（${fortuneSummary(lastFortune)}）`, 'link');
+      b.addEventListener('click', () => showFortune(lastFortune!));
+      banner.append('　', b);
+    }
   }
 
   stage.enabled = !closed && (!r || (r.phase === 'poe' && left > 0));
@@ -419,6 +445,107 @@ $('protected').addEventListener('change', () => {
   });
 });
 
+// ───────── 籤詩 code review ─────────
+
+const dlgFortune = $<HTMLDialogElement>('dlg-fortune');
+let lastFortune: FortuneReport | null = null;
+
+function fortuneSummary(r: FortuneReport): string {
+  return r.poem ? `${r.poemTitle.replace('　', ' ')}，${r.issues.length} 個問題` : '抽不出籤';
+}
+
+function setLastFortune(r: FortuneReport | null): void {
+  lastFortune = r;
+  const p = $('fortune-last');
+  p.replaceChildren();
+  if (!r) return;
+  const b = el('button', '看籤', 'link');
+  b.addEventListener('click', () => showFortune(r));
+  p.append(`最近一支：${r.repo}　${fortuneSummary(r)}　`, b);
+  updateControls();
+}
+
+function showFortune(r: FortuneReport): void {
+  $('f-title').textContent = r.poem ? r.poemTitle : '抽不出籤';
+  $('f-sub').textContent = `${r.repo}｜比較基準：${r.base}｜${r.changedFiles} 個檔案、${r.changedLines} 行程式碼${r.poem ? `｜業障 ${r.score}` : ''}`;
+  const poem = $('f-poem');
+  poem.hidden = !r.poem;
+  // 直書：每句一行、由右到左，每個字各佔一格（不依賴字型的直排支援）。
+  poem.replaceChildren(
+    ...(r.poem?.lines ?? []).map((l) => {
+      const col = el('span');
+      col.setAttribute('aria-label', l);
+      col.append(...[...l].map((ch) => el('i', ch)));
+      return col;
+    }),
+  );
+  $('f-nodraw').hidden = !r.noDraw;
+  $('f-nodraw').textContent = r.noDraw ?? '';
+
+  $('f-jie-sec').hidden = r.jie.length === 0;
+  $('f-jie').replaceChildren(...r.jie.map((j) => el('li', j)));
+
+  $('f-issues-sec').hidden = !r.poem;
+  $('f-count').textContent = r.issues.length ? `共 ${r.issues.length} 個問題` : '這次改動沒有查到問題';
+  const body = $('f-issues');
+  body.replaceChildren();
+  for (const i of r.issues) {
+    const tr = el('tr');
+    tr.append(el('td', `${i.file}:${i.line}`), el('td', SEVERITY_NAMES[i.severity], `sev ${i.severity}`), el('td', `${i.tool} ${i.id}`), el('td', i.message));
+    body.append(tr);
+  }
+  body.closest('.tablewrap')!.toggleAttribute('hidden', r.issues.length === 0);
+
+  $('f-names-sec').hidden = r.badNames.length === 0 && r.nameSkipped.length === 0;
+  const names = $('f-names');
+  names.replaceChildren();
+  for (const n of r.badNames) {
+    const li = el('li');
+    li.append(el('b', n.name), `　${n.strokes} 畫${n.number !== n.strokes ? `（化為 ${n.number}）` : ''}，凶：${n.label}`);
+    names.append(li);
+  }
+  $('f-names-note').textContent =
+    (r.names.length ? `這次新增 ${r.names.length} 個名字，${r.badNames.length} 個屬凶。只是建議，不擋。` : '') +
+    (r.nameSkipped.length ? `　查不到筆畫、未列入：${r.nameSkipped.join('、')}` : '');
+
+  const tools = $('f-tools');
+  tools.replaceChildren();
+  if (r.tools.length === 0) tools.append(el('li', '沒有可檢查的程式碼檔案。', 'muted'));
+  for (const t of r.tools) {
+    tools.append(el('li', `${t.langName}（${t.files} 個檔案）：${t.status === 'ok' ? `已用 ${t.tool} 檢查${t.detail ? `。${t.detail}` : ''}` : `略過。${t.detail}`}`, t.status));
+  }
+  if (!dlgFortune.open) dlgFortune.showModal();
+}
+
+dlgFortune.querySelector('[data-close]')!.addEventListener('click', () => dlgFortune.close());
+
+$('btn-fortune').addEventListener('click', async () => {
+  const msg = $('fortune-msg');
+  const btn = $<HTMLButtonElement>('btn-fortune');
+  const dir = $<HTMLSelectElement>('fortune-repo').value || (await api.chooseFolder());
+  if (!dir) return;
+  msg.className = 'muted';
+  msg.textContent = '搖籤筒中……';
+  btn.disabled = true;
+  const r = await api.drawFortune(dir);
+  btn.disabled = false;
+  if (!r.ok) {
+    msg.className = 'bad';
+    msg.textContent = r.message;
+    return;
+  }
+  msg.textContent = '';
+  setLastFortune(r.report);
+  showFortune(r.report);
+  $<HTMLSelectElement>('fortune-repo').value = r.report.repoPath;
+});
+
+$('auto-fortune').addEventListener('change', () => {
+  void api.setAutoFortune($<HTMLInputElement>('auto-fortune').checked).then(render);
+});
+
+api.onFortune((r) => setLastFortune(r));
+
 // ───────── 功過簿 ─────────
 
 const dlgLedger = $<HTMLDialogElement>('dlg-ledger');
@@ -540,6 +667,7 @@ api.onStateChanged(render);
 void api.getState().then(async (s) => {
   render(s);
   void refreshHooks();
+  setLastFortune(await api.getLastFortune());
   // 主殿是被 git push 叫起來的話，一開門就有儀式在等。
   const pending = await api.pullRitual();
   if (pending) startRitual(pending);

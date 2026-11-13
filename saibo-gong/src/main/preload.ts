@@ -18,6 +18,12 @@ const api: TempleApi = {
   uninstallRepoHook: (dir) => ipcRenderer.invoke('hook:uninstallRepo', dir),
   installGlobalHook: () => ipcRenderer.invoke('hook:installGlobal'),
   uninstallGlobalHook: () => ipcRenderer.invoke('hook:uninstallGlobal'),
+  drawFortune: (dir) => ipcRenderer.invoke('fortune:draw', dir),
+  getLastFortune: () => ipcRenderer.invoke('fortune:last'),
+  setAutoFortune: (on) => ipcRenderer.invoke('fortune:setAuto', on),
+  onFortune: (cb) => {
+    ipcRenderer.on('fortune:ready', (_e, r) => cb(r));
+  },
   pullRitual: () => ipcRenderer.invoke('ritual:pull'),
   finishRitual: (id, outcome) => ipcRenderer.invoke('ritual:finish', id, outcome),
   onRitualStart: (cb) => {

@@ -8,6 +8,7 @@ import { getAlmanac, parseDate } from '../core/almanac.ts';
 import { dataDir as resolveDataDir } from '../core/paths.ts';
 import { DEFAULT_PROTECTED, describeRefs, parseBranchList, releaseTargets, repoName, type PushInfo } from '../core/push.ts';
 import * as hooks from '../core/hooks.ts';
+import { drawFortune, loadStrokeTable, type FortuneReport } from '../core/fortune.ts';
 import { HookServer, type Decision, type PendingPush } from './hook-server.ts';
 import type { ActionResult, Defiance, FeatureInfo, HookStatus, LedgerView, RitualOutcome, RitualRequest, TempleState } from '../shared/api.ts';
 
@@ -22,8 +23,8 @@ const hookPaths: hooks.HookPaths = { exe: process.execPath, cli: join(__dirname,
 const FEATURES: Omit<FeatureInfo, 'enabled'>[] = [
   { id: 'poePush', name: '擲筊 push', desc: 'git push 前先擲筊，三次為限', stage: 'M2', available: true },
   { id: 'almanac', name: '農民曆宜忌', desc: '忌開市之日不得正式上線', stage: 'M2', available: true },
-  { id: 'fortune', name: '籤詩 code review', desc: '靜態檢查結果化為籤詩', stage: 'M3', available: false },
-  { id: 'nameology', name: '變數姓名學', desc: '算識別字筆畫吉凶，只建議不擋', stage: 'M3', available: false },
+  { id: 'fortune', name: '籤詩 code review', desc: '靜態檢查結果化為籤詩', stage: 'M3', available: true },
+  { id: 'nameology', name: '變數姓名學', desc: '抽籤時算新名字的筆畫吉凶，只建議不擋', stage: 'M3', available: true },
   { id: 'underworld', name: '陰間回收筒', desc: '「燒給它」與請回陽間', stage: 'M4', available: false },
   { id: 'shoujing', name: '收驚', desc: '連續當機的程式幫它收驚', stage: 'M4', available: false },
   { id: 'pudu', name: '中元普渡', desc: '超渡沒有回應與殘留的程式', stage: 'M4', available: false },
@@ -61,6 +62,8 @@ function buildState(): TempleState {
     confessionHintShown: settings.confessionHintShown,
     almanac: getAlmanac(today()),
     protectedBranches: protectedBranches(),
+    autoFortune: !!settings.autoFortune,
+    fortuneRepos: [...new Set([...(settings.fortuneRepos ?? []), ...(settings.hookRepos ?? [])])],
   };
 }
 
@@ -88,6 +91,41 @@ function openTemple(): TempleState {
   return broadcast();
 }
 
+// ───────── 籤詩 code review ─────────
+
+let lastFortune: FortuneReport | null = null;
+
+async function fortuneFor(dir: string, preferredBase?: string): Promise<{ ok: true; report: FortuneReport } | { ok: false; message: string }> {
+  if (!hooks.gitAvailable()) return { ok: false, message: '找不到 git，請先安裝 Git。' };
+  const root = hooks.repoRoot(dir);
+  if (!root) return { ok: false, message: '這個資料夾不是 git repo。' };
+  try {
+    const report = await drawFortune({
+      repoPath: root,
+      repoName: repoName(root),
+      preferredBase,
+      nameology: featureOn('nameology'),
+      strokeTable: loadStrokeTable(dataDir, join(__dirname, 'assets', 'letter-strokes.json')),
+    });
+    lastFortune = report;
+    const recent = [root, ...(store.getSettings().fortuneRepos ?? []).filter((p) => p !== root)].slice(0, 8);
+    store.updateSettings({ fortuneRepos: recent });
+    return { ok: true, report };
+  } catch (e) {
+    return { ok: false, message: `抽籤失敗：${e instanceof Error ? e.message.split('\n')[0] : String(e)}` };
+  }
+}
+
+/** push 前自動抽籤：只顯示結果，不影響 push 准不准。 */
+function autoFortune(info: PushInfo): void {
+  const s = store.getSettings();
+  if (s.closed || !s.autoFortune || !featureOn('fortune')) return;
+  void fortuneFor(info.repoPath, info.refs[0]?.remoteSha).then((r) => {
+    if (r.ok) win?.webContents.send('fortune:ready', r.report);
+    broadcast();
+  });
+}
+
 // ───────── push 儀式 ─────────
 
 function almanacBlock(info: PushInfo): string | null {
@@ -113,6 +151,7 @@ function toRitual(p: PendingPush): RitualRequest {
 const hookServer = new HookServer({
   dataDir,
   quickDecision(info): Decision | null {
+    autoFortune(info);
     if (store.getSettings().closed) return { allow: true, message: '' };
     if (!featureOn('poePush') && !almanacBlock(info)) return { allow: true, message: '' };
     return null;
@@ -313,6 +352,19 @@ if (!app.requestSingleInstanceLock()) {
     ipcMain.handle('hook:uninstallRepo', (_e, dir: string) => uninstallRepo(String(dir)));
     ipcMain.handle('hook:installGlobal', () => hooks.installGlobalHook(hookPaths, dataDir));
     ipcMain.handle('hook:uninstallGlobal', () => hooks.uninstallGlobalHook(dataDir));
+
+    ipcMain.handle('fortune:draw', async (_e, dir: string) => {
+      if (store.getSettings().closed) return { ok: false, message: '閉廟中，不抽籤。' };
+      if (!featureOn('fortune')) return { ok: false, message: '籤詩 code review 已關閉。' };
+      const r = await fortuneFor(String(dir));
+      broadcast();
+      return r;
+    });
+    ipcMain.handle('fortune:last', () => lastFortune);
+    ipcMain.handle('fortune:setAuto', (_e, on: boolean) => {
+      store.updateSettings({ autoFortune: !!on });
+      return broadcast();
+    });
 
     ipcMain.handle('ritual:pull', () => (hookServer.active ? toRitual(hookServer.active) : null));
     ipcMain.handle('ritual:finish', (_e, id: string, outcome: RitualOutcome) => finishRitual(String(id), { ...outcome }));

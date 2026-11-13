@@ -5,6 +5,7 @@ import type { LedgerEntry } from '../core/ledger.ts';
 import type { Stats } from '../core/store.ts';
 import type { ConfessionLength } from '../core/confession.ts';
 import type { Almanac } from '../core/almanac.ts';
+import type { FortuneReport } from '../core/fortune.ts';
 
 export interface FeatureInfo {
   id: string;
@@ -28,6 +29,8 @@ export interface TempleState {
   confessionHintShown: boolean;
   almanac: Almanac;
   protectedBranches: string[];
+  autoFortune: boolean;
+  fortuneRepos: string[]; // 可以直接選來抽籤的 repo
 }
 
 export interface LedgerView {
@@ -94,6 +97,13 @@ export interface TempleApi {
   uninstallRepoHook(dir: string): Promise<ActionResult>;
   installGlobalHook(): Promise<ActionResult>;
   uninstallGlobalHook(): Promise<ActionResult>;
+
+  /** 對一個 repo 抽籤（籤詩 code review）。 */
+  drawFortune(dir: string): Promise<{ ok: true; report: FortuneReport } | { ok: false; message: string }>;
+  getLastFortune(): Promise<FortuneReport | null>;
+  setAutoFortune(on: boolean): Promise<TempleState>;
+  /** push 前自動抽的籤出來了。 */
+  onFortune(cb: (r: FortuneReport) => void): void;
 
   /** 畫面準備好了，領取正在等的儀式（沒有就是 null）。 */
   pullRitual(): Promise<RitualRequest | null>;

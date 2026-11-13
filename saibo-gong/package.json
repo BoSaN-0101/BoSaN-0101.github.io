@@ -18,6 +18,8 @@
     "typescript": "^5.9.3"
   },
   "dependencies": {
+    "cnchar": "^3.2.6",
+    "cnchar-trad": "^3.2.6",
     "lunar-javascript": "^1.7.8"
   }
 }

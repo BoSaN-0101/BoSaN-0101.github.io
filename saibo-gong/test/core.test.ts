@@ -146,3 +146,74 @@ test('push：解析 hook 輸入並判斷是否正式上線', () => {
   assert.deepEqual(parseBranchList('main, master，release  prod'), ['main', 'master', 'release', 'prod']);
   assert.equal(repoName('C:\\Users\\x\\my repo\\'), 'my repo');
 });
+
+import { POEMS, GRADE_ORDER, drawPoem, chineseNumber } from '../src/core/fortune-poems.ts';
+import { gradeOf, jieFor } from '../src/core/fortune.ts';
+import { parseDiff } from '../src/core/diff.ts';
+import { parseCppcheck, ruffSeverity, langOf } from '../src/core/linters.ts';
+import { strokesOf, readName, reduce81, declaredNames } from '../src/core/nameology.ts';
+
+test('籤詩庫：每個籤等至少十支，每支四句七言，沒有重複', () => {
+  for (const g of GRADE_ORDER) assert.ok(POEMS.filter((p) => p.grade === g).length >= 10, g);
+  const seen = new Set<string>();
+  for (const p of POEMS) {
+    assert.equal(p.lines.length, 4);
+    for (const l of p.lines) {
+      assert.equal([...l].length, 7, `第 ${p.no} 籤「${l}」不是七個字`);
+      assert.ok(!seen.has(l), `重複的句子：${l}`);
+      seen.add(l);
+    }
+    assert.equal(drawPoem(p.grade, () => 0).grade, p.grade);
+  }
+  assert.equal(chineseNumber(7), '七');
+  assert.equal(chineseNumber(12), '十二');
+  assert.equal(chineseNumber(50), '五十');
+});
+
+test('籤等：依加權問題密度決定，有錯誤等級就不會好過中平', () => {
+  const s = (severity: 'error' | 'warning' | 'style', n: number) => Array.from({ length: n }, () => ({ severity }));
+  assert.equal(gradeOf([], 100).grade, 'shangshang');
+  assert.equal(gradeOf(s('style', 2), 100).grade, 'shangji');
+  assert.equal(gradeOf(s('warning', 1), 100).grade, 'zhongji');
+  assert.equal(gradeOf(s('warning', 3), 100).grade, 'zhongping');
+  assert.equal(gradeOf(s('warning', 4), 100).grade, 'xiaxia');
+  assert.equal(gradeOf(s('error', 1), 1000).grade, 'zhongping');
+  assert.equal(gradeOf(s('error', 3), 5000).grade, 'xiaxia');
+});
+
+test('diff：解析新增的行號', () => {
+  const d = parseDiff(['diff --git a/a.cpp b/a.cpp', '--- a/a.cpp', '+++ b/a.cpp', '@@ -3,0 +4,2 @@', '+int x;', '+int y;', '@@ -10 +12 @@', '-old', '+new',
+    'diff --git a/gone.py b/gone.py', '--- a/gone.py', '+++ /dev/null', '@@ -1 +0,0 @@', '-x'].join('\n'));
+  assert.deepEqual([...d.get('a.cpp')!.lines], [4, 5, 12]);
+  assert.deepEqual(d.get('a.cpp')!.added, ['int x;', 'int y;', 'new']);
+  assert.equal(d.has('gone.py'), false);
+});
+
+test('檢查工具：解析輸出、判斷語言與嚴重度', () => {
+  const list = parseCppcheck('bad.cpp\t7\terror\tmemleak\tMemory leak: p\nnoise\nbad.cpp\t3\tstyle\tunusedVariable\tUnused variable: x\n');
+  assert.deepEqual(list.map((i) => [i.line, i.severity, i.id]), [[7, 'error', 'memleak'], [3, 'style', 'unusedVariable']]);
+  assert.equal(langOf('src/a.CPP'), 'cpp');
+  assert.equal(langOf('x.tsx'), 'js');
+  assert.equal(langOf('README.md'), null);
+  assert.equal(ruffSeverity('F821'), 'error');
+  assert.equal(ruffSeverity('F401'), 'warning');
+  assert.equal(ruffSeverity('E501'), 'style');
+  assert.match(jieFor({ tool: 'cppcheck', file: 'a.cpp', line: 7, severity: 'error', id: 'memleak', message: 'Memory leak: p' }), /^a\.cpp 第 7 行：.*(孤魂野鬼|財氣外洩)/);
+});
+
+test('變數姓名學：筆畫、八十一數理、找出宣告的名字', () => {
+  const table = { A: 3, B: 3, C: 1, T: 2, M: 4, P: 2, '2': 1 };
+  assert.equal(strokesOf('abc', table), 7);
+  assert.equal(strokesOf('tmp2', table), 9);
+  assert.equal(strokesOf('a_b', table), 6);
+  assert.equal(strokesOf('變數', table), 38);
+  assert.equal(strokesOf('___', table), null);
+  assert.equal(readName('tmp2', table)!.luck, 'xiong');
+  assert.equal(reduce81(81), 81);
+  assert.equal(reduce81(82), 2);
+  assert.equal(reduce81(161), 81);
+  assert.deepEqual(declaredNames('cpp', ['int* leak = new int[10];', 'std::vector<int> items;', 'void doThing(int count) {', '  return leak;', 'class Widget {']).sort(),
+    ['Widget', 'count', 'doThing', 'items', 'leak']);
+  assert.deepEqual(declaredNames('python', ['def run(x):', 'total = 0', 'for item in xs:', '    if total == 3:  # hi']).sort(), ['item', 'run', 'total']);
+  assert.deepEqual(declaredNames('js', ['const a = 1, b = 2;', 'function go() {', 'let 計數 = 0;']).sort(), ['a', 'go', '計數']);
+});

@@ -2,7 +2,7 @@
 
 把台灣民俗儀式套進寫程式日常的 Windows 桌面 App（Electron + TypeScript）。
 
-目前進度：**M2**（M1 的擲筊引擎、功過簿、主殿、系統匣，加上擲筊 push 與農民曆宜忌）。
+目前進度：**M3**（擲筊引擎、功過簿、主殿、系統匣、擲筊 push、農民曆宜忌，加上籤詩 code review 與變數姓名學）。
 
 ## 在 Windows 上試用
 
@@ -34,6 +34,30 @@ npm start
 
 想模擬忌開市的日子，啟動前設環境變數 `SAIBO_FAKE_DATE`，例如 `2026-11-14`。
 
+## 籤詩 code review
+
+在主殿的「籤詩 code review」卡片選一個 repo 按「抽籤」。它會：
+
+1. 找出這次的改動（和上次 push 比較，含還沒 commit 的修改）。
+2. 依語言呼叫免費的靜態檢查工具，只看改動到的行：
+
+   | 語言 | 工具 | 安裝 |
+   |---|---|---|
+   | C/C++ | cppcheck | `winget install Cppcheck.Cppcheck` |
+   | Python | ruff | `pip install ruff` |
+   | JS/TS | eslint | 專案內 `npm install -D eslint`，或 `npm install -g eslint` |
+
+   沒裝的工具會提示並跳過那個語言。專案沒有 eslint 設定檔時，改用內建的基本規則（只檢查 JS）。
+3. 依問題的嚴重度加權、除以改動行數算出分數，對應上上、上吉、中吉、中平、下下，抽一支籤。
+
+籤上有三段：**籤詩**（四句七言）、**解曰**（把問題翻成民俗說法）、**白話**（每個問題的檔案、行號、檢查工具的原文）。
+
+勾選「push 前自動抽籤」後，每次 push 會順便抽一支，只顯示、不擋。
+
+**變數姓名學**：抽籤時一併算這次新增的名字（變數、函式、類別）的筆畫，套八十一數理，屬凶的列在「宜改名」。中文字查真實筆畫，英文字母照手寫大寫的筆畫；對照表在 `%APPDATA%\DigitalTemple\letter-strokes.json`，可以自己改。
+
+籤詩全部是本專案自行創作，共 50 支。
+
 ## 開發
 
 | 指令 | 作用 |
@@ -44,4 +68,4 @@ npm start
 
 程式碼分成 `src/core`（不碰畫面的邏輯）、`src/main`（Electron 主程序、系統匣、git hook 用的小程式）、`src/renderer`（主殿畫面）。
 
-農民曆使用 [lunar-javascript](https://github.com/6tail/lunar-javascript)（MIT 授權），完全離線計算。
+農民曆使用 [lunar-javascript](https://github.com/6tail/lunar-javascript)，中文筆畫使用 [cnchar](https://github.com/theajack/cnchar)，都是 MIT 授權、完全離線。
