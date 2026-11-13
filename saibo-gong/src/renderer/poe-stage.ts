@@ -88,6 +88,7 @@ export class PoeStage {
   private t0 = 0;
   private hand = { x: W / 2, y: 330 };
   private samples: { x: number; y: number; t: number }[] = [];
+  private held: [Pose, Pose];
 
   constructor(canvas: HTMLCanvasElement) {
     this.canvas = canvas;
@@ -97,6 +98,7 @@ export class PoeStage {
     canvas.height = H * dpr;
     this.ctx.scale(dpr, dpr);
     this.rest = this.homePose();
+    this.held = this.homePose();
     canvas.addEventListener('pointerdown', (e) => this.down(e));
     canvas.addEventListener('pointermove', (e) => this.move(e));
     canvas.addEventListener('pointerup', (e) => this.up(e));
@@ -138,16 +140,44 @@ export class PoeStage {
 
   private down(e: PointerEvent): void {
     if (this.busy || !this.enabled) return;
+    // 在神桌前任何地方按下都能拿起筊：筊落地後可能彈到很遠，不必先去找它。
     const p = this.pos(e);
-    const near = this.rest.some((q) => Math.hypot(q.x - p.x, q.y - p.y) < 90);
-    if (!near) return;
+    this.held = [{ ...this.rest[0] }, { ...this.rest[1] }];
+    // 把角度收到離目標最近的那一圈，免得拿起來時多轉好幾圈。
+    const TAU = Math.PI * 2;
+    const wrap = (a: number) => ((((a + Math.PI) % TAU) + TAU) % TAU) - Math.PI;
+    this.held[0].spin = -0.2 + wrap(this.held[0].spin + 0.2);
+    this.held[1].spin = 0.2 + Math.PI + wrap(this.held[1].spin - 0.2 - Math.PI);
+    for (const h of this.held) h.flip = wrap(h.flip);
     this.canvas.setPointerCapture(e.pointerId);
     this.canvas.classList.add('grabbing');
     this.state = 'drag';
     this.hand = p;
     this.samples = [{ ...p, t: performance.now() }];
     this.onGrab?.();
+    requestAnimationFrame(() => this.gather());
+  }
+
+  /** 拿著的時候，筊從落地的位置滑到手上。 */
+  private gather(): void {
+    if (this.state !== 'drag' && this.state !== 'wait') return;
+    const targets = this.handPoses();
+    this.held.forEach((h, i) => {
+      const t = targets[i];
+      h.x += (t.x - h.x) * 0.3;
+      h.y += (t.y - h.y) * 0.3;
+      h.spin += (t.spin - h.spin) * 0.3;
+      h.flip += (0 - h.flip) * 0.3;
+    });
     this.draw();
+    requestAnimationFrame(() => this.gather());
+  }
+
+  private handPoses(): [Pose, Pose] {
+    return [
+      { x: this.hand.x - 34, y: this.hand.y, spin: -0.2, flip: 0, floorY: FLOOR },
+      { x: this.hand.x + 34, y: this.hand.y, spin: 0.2 + Math.PI, flip: 0, floorY: FLOOR },
+    ];
   }
 
   private move(e: PointerEvent): void {
@@ -157,7 +187,6 @@ export class PoeStage {
     const now = performance.now();
     this.samples.push({ ...p, t: now });
     while (this.samples.length > 2 && now - this.samples[0].t > 90) this.samples.shift();
-    this.draw();
   }
 
   private up(_e: PointerEvent): void {
@@ -238,12 +267,7 @@ export class PoeStage {
     const c = this.ctx;
     c.clearRect(0, 0, W, H);
     const poses: Pose[] =
-      this.state === 'drag' || this.state === 'wait'
-        ? [
-            { x: this.hand.x - 34, y: this.hand.y, spin: -0.2, flip: 0, floorY: FLOOR },
-            { x: this.hand.x + 34, y: this.hand.y, spin: 0.2 + Math.PI, flip: 0, floorY: FLOOR },
-          ]
-        : this.rest;
+      this.state === 'drag' || this.state === 'wait' ? this.held : this.rest;
     for (const p of poses) {
       const lift = clamp((p.floorY - p.y) / 300, 0, 1);
       c.fillStyle = `rgba(0,0,0,${0.38 * (1 - lift * 0.7)})`;

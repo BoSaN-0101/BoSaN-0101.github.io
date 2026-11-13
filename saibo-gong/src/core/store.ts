@@ -3,10 +3,13 @@
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import type { PoeResult } from './poe.ts';
+import { DEFAULT_CONFESSION_LENGTH, type ConfessionLength } from './confession.ts';
 
 export interface Settings {
   closed: boolean; // 閉廟中
   features: Record<string, boolean>;
+  confessionLength: ConfessionLength;
+  confessionHintShown: boolean; // 第一次打完懺悔文後的「可調整長度」提示是否已出現過
 }
 
 export interface Stats {
@@ -16,7 +19,7 @@ export interface Stats {
   yin: number;
 }
 
-const DEFAULT_SETTINGS: Settings = { closed: false, features: {} };
+const DEFAULT_SETTINGS: Settings = { closed: false, features: {}, confessionLength: DEFAULT_CONFESSION_LENGTH, confessionHintShown: false };
 const DEFAULT_STATS: Stats = { throws: 0, sheng: 0, xiao: 0, yin: 0 };
 
 function readJson<T>(file: string, fallback: T): T {

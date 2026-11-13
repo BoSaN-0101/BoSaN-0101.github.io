@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { throwPoe, judge } from '../src/core/poe.ts';
 import { Ledger } from '../src/core/ledger.ts';
-import { CONFESSIONS, isConfessionComplete, correctPrefixLength } from '../src/core/confession.ts';
+import { CONFESSIONS, CONFESSION_LENGTHS, pickConfession, isConfessionComplete, correctPrefixLength } from '../src/core/confession.ts';
 import { Store } from '../src/core/store.ts';
 
 const tmp = () => mkdtempSync(join(tmpdir(), 'saibo-'));
@@ -88,9 +88,19 @@ test('功過簿：寫入一筆後、封印更新前中斷，不算竄改', () =>
   rmSync(dir, { recursive: true });
 });
 
-test('懺悔文：要逐字相同，長度約 80 字', () => {
+test('懺悔文：短中長各有兩版，抽到的長度和設定一致', () => {
+  for (const l of CONFESSION_LENGTHS) {
+    assert.equal(CONFESSIONS.filter((c) => c.length === l.id).length, 2);
+    for (let i = 0; i < 20; i++) assert.equal(pickConfession(l.id).length, l.id);
+  }
+  assert.equal(pickConfession().length, 'medium');
+});
+
+test('懺悔文：要逐字相同，長度落在各級距', () => {
+  const range = { short: [28, 42], medium: [65, 95], long: [130, 170] };
   for (const c of CONFESSIONS) {
-    assert.ok(c.text.length >= 65 && c.text.length <= 95, `${c.id} 長度 ${c.text.length}`);
+    const [lo, hi] = range[c.length];
+    assert.ok(c.text.length >= lo && c.text.length <= hi, `${c.id} 長度 ${c.text.length}`);
     assert.equal(isConfessionComplete(c.id, c.text), true);
     assert.equal(isConfessionComplete(c.id, c.text + '\n'), true);
     assert.equal(isConfessionComplete(c.id, c.text.slice(0, -1)), false);

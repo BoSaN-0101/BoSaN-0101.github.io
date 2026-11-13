@@ -1,7 +1,7 @@
 import { PoeStage } from './poe-stage.ts';
 import { createMock } from './mock.ts';
 import { POE_NAMES, type PoeResult, type PoeThrow } from '../core/poe.ts';
-import { correctPrefixLength, normalizeTyped } from '../core/confession.ts';
+import { CONFESSION_LENGTHS, correctPrefixLength, normalizeTyped } from '../core/confession.ts';
 import type { ConfessionPrompt, TempleApi, TempleState } from '../shared/api.ts';
 import type { LedgerEntry } from '../core/ledger.ts';
 
@@ -47,9 +47,9 @@ function render(s: TempleState): void {
   $('tamper-reason').textContent = s.tamperReason ? `：${s.tamperReason}` : '';
 
   $('closed-veil').hidden = !s.closed;
-  stage.enabled = !s.closed;
   $<HTMLButtonElement>('btn-auto').disabled = s.closed;
   $<HTMLButtonElement>('btn-drill').disabled = s.closed;
+  syncStageEnabled();
   if (s.closed) { $('hint').hidden = true; $('result').hidden = true; }
 
   $('today').textContent = new Date().toLocaleDateString('zh-TW', { year: 'numeric', month: 'long', day: 'numeric', weekday: 'long' });
@@ -69,6 +69,18 @@ function render(s: TempleState): void {
     const li = el('li');
     li.append(el('time', fmtTime(e.time)), document.createTextNode(`${e.feature}・${e.action}：${e.target}`));
     recent.append(li);
+  }
+
+  const seg = $('confess-length');
+  seg.replaceChildren();
+  for (const l of CONFESSION_LENGTHS) {
+    const b = el('button');
+    b.type = 'button';
+    b.setAttribute('role', 'radio');
+    b.setAttribute('aria-checked', String(s.confessionLength === l.id));
+    b.append(document.createTextNode(l.name), el('small', l.hint));
+    b.addEventListener('click', () => void api.setConfessionLength(l.id).then(render));
+    seg.append(b);
   }
 
   const feats = $('features');
@@ -102,7 +114,14 @@ function showResult(name: string, desc: string, bad: boolean): void {
   $('result').hidden = false;
 }
 
+/** 閉廟中、或演練的次數用完時，筊就拿不起來。 */
+function syncStageEnabled(): void {
+  const drillOver = !!drill && (drill.done || drill.used >= MAX_DRILL_THROWS);
+  stage.enabled = !state?.closed && !drillOver;
+}
+
 function updateMode(): void {
+  syncStageEnabled();
   const label = $('mode-label');
   const auto = $<HTMLButtonElement>('btn-auto');
   const defy = $('btn-defy');
@@ -268,7 +287,23 @@ function finishConfess(typed: string | null): void {
   dlgConfess.close();
   confessResolve?.(typed);
   confessResolve = null;
+  // 第一次打完之後提示一次：長度可以調。
+  if (typed !== null && !state.confessionHintShown) {
+    $('toast').hidden = false;
+    void api.markConfessionHintShown().then(render);
+  }
 }
+
+$('toast-close').addEventListener('click', () => { $('toast').hidden = true; });
+$('toast-go').addEventListener('click', () => {
+  $('toast').hidden = true;
+  const card = $('card-confess');
+  card.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  card.classList.remove('flash');
+  void card.offsetWidth;
+  card.classList.add('flash');
+  card.querySelector<HTMLButtonElement>('button[aria-checked=true]')?.focus();
+});
 $('confess-ok').addEventListener('click', () => {
   if (confessPrompt && normalizeTyped(confessInput.value) === confessPrompt.text) finishConfess(confessPrompt.text);
 });

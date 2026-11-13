@@ -58,6 +58,11 @@
       <h2>擲筊統計</h2>
       <div class="stats" id="stats"></div>
     </section>
+    <section class="card" id="card-confess">
+      <h2>懺悔文長度</h2>
+      <div id="confess-length" class="seg" role="radiogroup" aria-label="懺悔文長度"></div>
+      <p class="muted">硬闖時要逐字打完的那一段。越長越擋人。</p>
+    </section>
     <section class="card">
       <h2>最近的功過簿 <button id="btn-ledger" class="btn small">翻閱</button></h2>
       <ul id="recent" class="recent"></ul>
@@ -93,6 +98,12 @@
     <button id="confess-ok" class="btn danger" disabled>弟子知錯，硬闖</button>
   </footer>
 </dialog>
+
+<div id="toast" class="toast" role="status" hidden>
+  <span>懺悔文太長或太短？可以在主殿右側的「懺悔文長度」調整。</span>
+  <button id="toast-go" class="btn small">帶我去</button>
+  <button id="toast-close" class="btn small ghost">知道了</button>
+</div>
 
 <script src="renderer.js"></script>
 </body>

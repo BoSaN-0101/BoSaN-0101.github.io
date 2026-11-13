@@ -3,6 +3,7 @@
 import type { PoeThrow } from '../core/poe.ts';
 import type { LedgerEntry } from '../core/ledger.ts';
 import type { Stats } from '../core/store.ts';
+import type { ConfessionLength } from '../core/confession.ts';
 
 export interface FeatureInfo {
   id: string;
@@ -22,6 +23,8 @@ export interface TempleState {
   stats: Stats;
   features: FeatureInfo[];
   dataDir: string;
+  confessionLength: ConfessionLength;
+  confessionHintShown: boolean;
 }
 
 export interface LedgerView {
@@ -45,5 +48,7 @@ export interface TempleApi {
   openTemple(): Promise<TempleState>;
   setFeature(id: string, enabled: boolean): Promise<TempleState>;
   pickConfession(): Promise<ConfessionPrompt>;
+  setConfessionLength(length: ConfessionLength): Promise<TempleState>;
+  markConfessionHintShown(): Promise<TempleState>;
   onStateChanged(cb: (s: TempleState) => void): void;
 }

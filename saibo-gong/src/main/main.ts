@@ -3,7 +3,7 @@ import { join } from 'node:path';
 import { throwPoe } from '../core/poe.ts';
 import { Ledger } from '../core/ledger.ts';
 import { Store } from '../core/store.ts';
-import { pickConfession } from '../core/confession.ts';
+import { isConfessionLength, pickConfession } from '../core/confession.ts';
 import type { FeatureInfo, LedgerView, TempleState } from '../shared/api.ts';
 
 const APP_NAME = '賽博宮';
@@ -40,6 +40,8 @@ function buildState(): TempleState {
     stats: store.getStats(),
     features: FEATURES.map((f) => ({ ...f, enabled: f.available && settings.features[f.id] !== false })),
     dataDir,
+    confessionLength: isConfessionLength(settings.confessionLength) ? settings.confessionLength : 'medium',
+    confessionHintShown: settings.confessionHintShown,
   };
 }
 
@@ -156,7 +158,15 @@ if (!app.requestSingleInstanceLock()) {
       }
       return broadcast();
     });
-    ipcMain.handle('confession:pick', () => pickConfession());
+    ipcMain.handle('confession:pick', () => pickConfession(buildState().confessionLength));
+    ipcMain.handle('confession:setLength', (_e, length: unknown) => {
+      if (isConfessionLength(length)) store.updateSettings({ confessionLength: length });
+      return broadcast();
+    });
+    ipcMain.handle('confession:hintShown', () => {
+      store.updateSettings({ confessionHintShown: true });
+      return broadcast();
+    });
 
     createTray();
     createWindow();

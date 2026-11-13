@@ -9,6 +9,8 @@ const api: TempleApi = {
   openTemple: () => ipcRenderer.invoke('temple:open'),
   setFeature: (id, enabled) => ipcRenderer.invoke('feature:set', id, enabled),
   pickConfession: () => ipcRenderer.invoke('confession:pick'),
+  setConfessionLength: (length) => ipcRenderer.invoke('confession:setLength', length),
+  markConfessionHintShown: () => ipcRenderer.invoke('confession:hintShown'),
   onStateChanged: (cb) => {
     ipcRenderer.on('state:changed', (_e, s) => cb(s));
   },

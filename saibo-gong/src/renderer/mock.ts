@@ -2,7 +2,7 @@
 // 正式執行時 window.temple 由 preload 提供，不會用到這個檔案的內容。
 
 import { throwPoe } from '../core/poe.ts';
-import { pickConfession } from '../core/confession.ts';
+import { pickConfession, type ConfessionLength } from '../core/confession.ts';
 import type { TempleApi, TempleState } from '../shared/api.ts';
 import type { LedgerEntry } from '../core/ledger.ts';
 
@@ -14,6 +14,8 @@ export function createMock(): TempleApi {
   if (q.has('seed')) { add('閉廟', '全部功能'); add('硬闖', 'demo/repo', '弟子愚昧……'); }
   const stats = { throws: 0, sheng: 0, xiao: 0, yin: 0 };
   let closed = q.has('closed');
+  let confessionLength: ConfessionLength = 'medium';
+  let confessionHintShown = false;
   let listener: ((s: TempleState) => void) | null = null;
   const state = (): TempleState => ({
     closed,
@@ -27,6 +29,8 @@ export function createMock(): TempleApi {
       { id: 'guaiguai', name: '綠色乖乖', desc: '過期會不乖（效果皆可還原）', stage: 'M5', available: false, enabled: false },
     ],
     dataDir: '（瀏覽器預覽，不存檔）',
+    confessionLength,
+    confessionHintShown,
   });
   const emit = () => { const s = state(); listener?.(s); return s; };
   const forced = q.get('force');
@@ -41,7 +45,9 @@ export function createMock(): TempleApi {
     closeTemple: async () => { if (!closed) { closed = true; add('閉廟', '全部功能'); } return emit(); },
     openTemple: async () => { closed = false; return emit(); },
     setFeature: async () => emit(),
-    pickConfession: async () => pickConfession(),
+    pickConfession: async () => pickConfession(confessionLength),
+    setConfessionLength: async (l) => { confessionLength = l; return emit(); },
+    markConfessionHintShown: async () => { confessionHintShown = true; return emit(); },
     onStateChanged: (cb) => { listener = cb; },
   };
 }
