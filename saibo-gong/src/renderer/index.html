@@ -1,0 +1,100 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self'; script-src 'self'; img-src 'self' data:">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>賽博宮</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header class="top">
+  <h1>賽博宮</h1>
+  <span id="status" class="pill">開廟中</span>
+  <span class="spacer"></span>
+  <button id="btn-close-temple" class="btn danger" title="一鍵暫停所有功能。閉廟會記入功過簿。">閉廟</button>
+</header>
+
+<div id="tamper" class="tamper" hidden>
+  <strong>功過簿遭竄改</strong><span id="tamper-reason"></span>
+  <button id="btn-tamper-open" class="btn small">翻閱功過簿</button>
+</div>
+
+<main>
+  <section class="hall">
+    <div class="stage" id="stage">
+      <div class="scene" aria-hidden="true">
+        <div class="plaque">賽博宮</div>
+        <div class="curtain left"></div><div class="curtain right"></div>
+        <div class="niche"><span>神位<br>虛位以待</span></div>
+        <div class="burner"><i></i><i></i><i></i></div>
+        <div class="table"></div>
+        <div class="floor"></div>
+      </div>
+      <canvas id="poe" width="720" height="460"></canvas>
+      <div id="hint" class="hint">按住筊，甩出去再放開</div>
+      <div id="result" class="result" hidden><b id="result-name"></b><span id="result-desc"></span></div>
+      <div id="closed-veil" class="veil" hidden><b>閉廟中</b><span>所有功能暫停</span></div>
+    </div>
+    <div class="controls">
+      <span id="mode-label" class="mode">問事（不限次數）</span>
+      <span class="spacer"></span>
+      <button id="btn-auto" class="btn">代為擲筊</button>
+      <button id="btn-defy" class="btn danger" hidden>硬闖</button>
+      <button id="btn-drill" class="btn ghost" title="照 push 的規矩走一遍：三次為限，擲不到可硬闖。演練不記功過簿。">演練 push 儀式</button>
+    </div>
+  </section>
+
+  <aside class="side">
+    <section class="card">
+      <h2>今日農民曆</h2>
+      <p id="today" class="big"></p>
+      <p class="muted">宜忌待 M2 請出農民曆後顯示。</p>
+    </section>
+    <section class="card">
+      <h2>綠色乖乖</h2>
+      <p class="muted">尚未供奉（M5 開放登記）。</p>
+    </section>
+    <section class="card">
+      <h2>擲筊統計</h2>
+      <div class="stats" id="stats"></div>
+    </section>
+    <section class="card">
+      <h2>最近的功過簿 <button id="btn-ledger" class="btn small">翻閱</button></h2>
+      <ul id="recent" class="recent"></ul>
+    </section>
+  </aside>
+
+  <section class="card features">
+    <h2>各殿功能</h2>
+    <ul id="features"></ul>
+  </section>
+</main>
+
+<dialog id="dlg-ledger" class="dlg wide">
+  <header><h2>功過簿</h2><input id="ledger-search" type="search" placeholder="搜尋功能、行為、對象、懺悔文"><button class="btn small" data-close>闔上</button></header>
+  <p id="ledger-warn" class="warn" hidden></p>
+  <p class="muted">只能翻閱，不能修改或刪除。存放位置：<code id="data-dir"></code></p>
+  <div class="tablewrap"><table>
+    <thead><tr><th>#</th><th>時間</th><th>功能</th><th>行為</th><th>對象</th><th>懺悔文</th></tr></thead>
+    <tbody id="ledger-body"></tbody>
+  </table></div>
+  <p id="ledger-empty" class="muted" hidden>功過簿上還是一片空白。</p>
+</dialog>
+
+<dialog id="dlg-confess" class="dlg">
+  <header><h2>懺悔文</h2><span id="confess-title" class="muted"></span></header>
+  <p class="muted">逐字打完才放行。不能貼上，打錯要改正。</p>
+  <p id="confess-text" class="confess-text"></p>
+  <textarea id="confess-input" rows="5" spellcheck="false" autocomplete="off" placeholder="在這裡照著打"></textarea>
+  <footer>
+    <span id="confess-msg" class="muted"></span>
+    <span class="spacer"></span>
+    <button id="confess-cancel" class="btn ghost">作罷</button>
+    <button id="confess-ok" class="btn danger" disabled>弟子知錯，硬闖</button>
+  </footer>
+</dialog>
+
+<script src="renderer.js"></script>
+</body>
+</html>
