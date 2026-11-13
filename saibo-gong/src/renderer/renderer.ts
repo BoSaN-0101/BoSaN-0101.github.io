@@ -53,7 +53,14 @@ function render(s: TempleState): void {
   const [y, m, d] = s.almanac.date.split('-').map(Number);
   $('today').textContent = new Date(y, m - 1, d).toLocaleDateString('zh-TW', { year: 'numeric', month: 'long', day: 'numeric', weekday: 'long' });
   $('lunar').textContent = `農曆 ${s.almanac.lunar}`;
-  $('kaishi').hidden = !s.almanac.jiKaishi;
+  // 農民曆對 push 的實際影響，一句話講清楚。
+  const almanacOn = s.features.some((f) => f.id === 'almanac' && f.enabled) && !s.closed;
+  const kaishi = $('kaishi');
+  const targets = `${s.protectedBranches.join('、')} 或 tag`;
+  kaishi.className = 'badge' + (s.almanac.jiKaishi ? '' : ' calm');
+  kaishi.textContent = s.almanac.jiKaishi
+    ? almanacOn ? `今日忌開市：push 到 ${targets} 會被擋` : '今日忌開市（農民曆宜忌未啟用，不擋）'
+    : `今日不忌開市：push 到 ${targets} 不受農民曆阻擋`;
   for (const [id, list] of [['yi', s.almanac.yi], ['ji', s.almanac.ji]] as const) {
     const dd = $(id);
     dd.replaceChildren();
@@ -181,7 +188,7 @@ function updateControls(): void {
     label.textContent = left > 0 ? `${name}：第 ${r.used + 1} / ${r.max} 擲` : `${name}：三次用完，神明不准`;
     auto.hidden = left === 0;
     auto.textContent = r.used === 0 ? '代為擲筊' : '再擲一次';
-    defy.hidden = r.used === 0;
+    defy.hidden = left > 0; // 三次都擲完才有硬闖這條路
     giveup.hidden = !real;
   } else {
     label.textContent = real ? 'push 儀式結束' : '演練結束';
@@ -249,7 +256,7 @@ stage.onLanded = (t: PoeThrow) => {
     return;
   } else {
     const left = r.max - r.used;
-    showResult(POE_NAMES[t.result], left > 0 ? `${RESULT_DESC[t.result]}。還能再擲 ${left} 次，或硬闖` : `${RESULT_DESC[t.result]}。三次用完，只能硬闖或作罷`, true);
+    showResult(POE_NAMES[t.result], left > 0 ? `${RESULT_DESC[t.result]}。還能再擲 ${left} 次` : `${RESULT_DESC[t.result]}。三次用完，只能硬闖或作罷`, true);
   }
   updateControls();
 };
@@ -506,15 +513,6 @@ function finishConfess(d: Defiance | null): void {
 }
 
 $('toast-close').addEventListener('click', () => { $('toast').hidden = true; });
-$('toast-go').addEventListener('click', () => {
-  $('toast').hidden = true;
-  const card = $('card-confess');
-  card.scrollIntoView({ behavior: 'smooth', block: 'center' });
-  card.classList.remove('flash');
-  void card.offsetWidth;
-  card.classList.add('flash');
-  card.querySelector<HTMLButtonElement>('button[aria-checked=true]')?.focus();
-});
 $('confess-ok').addEventListener('click', () => {
   if (confessPrompt && normalizeTyped(confessInput.value) === confessPrompt.text) {
     finishConfess({ confessionId: confessPrompt.id, typed: confessPrompt.text });
