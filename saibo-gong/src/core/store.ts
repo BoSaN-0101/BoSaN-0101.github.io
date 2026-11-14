@@ -20,6 +20,10 @@ export interface Settings {
   puduWhitelist: string[]; // 普渡永遠不碰的程式
   puduRemindedYear: number; // 哪一年的農曆七月已經提醒過
   zhongyuanNotified: string; // 哪一天的中元正日已經通知過
+  guaiguaiExpiry: string; // 綠色乖乖的有效日期 YYYY-MM-DD，沒供奉是空字串
+  guaiguaiPacifiedUntil: number; // 暫時安撫到什麼時候（毫秒時間戳）
+  /** 桌布被弄歪時記下原本的桌布，用來還原。沒有動過桌布就是 null。 */
+  wallpaperBackup: { originalPath: string; backupFile: string } | null;
 }
 
 export interface Stats {
@@ -36,7 +40,7 @@ export interface Stats {
 
 export type PushOutcome = 'pushBlessed' | 'pushDefied' | 'pushAbandoned' | 'pushAbsent';
 
-const DEFAULT_SETTINGS: Settings = { closed: false, features: {}, confessionLength: DEFAULT_CONFESSION_LENGTH, confessionHintShown: false, protectedBranches: DEFAULT_PROTECTED, hookRepos: [], autoFortune: false, fortuneRepos: [], underworldDays: 30, shoujingHandled: [], puduWhitelist: [], puduRemindedYear: 0, zhongyuanNotified: '' };
+const DEFAULT_SETTINGS: Settings = { closed: false, features: {}, confessionLength: DEFAULT_CONFESSION_LENGTH, confessionHintShown: false, protectedBranches: DEFAULT_PROTECTED, hookRepos: [], autoFortune: false, fortuneRepos: [], underworldDays: 30, shoujingHandled: [], puduWhitelist: [], puduRemindedYear: 0, zhongyuanNotified: '', guaiguaiExpiry: '', guaiguaiPacifiedUntil: 0, wallpaperBackup: null };
 const DEFAULT_STATS: Stats = { throws: 0, sheng: 0, xiao: 0, yin: 0, pushes: 0, pushBlessed: 0, pushDefied: 0, pushAbandoned: 0, pushAbsent: 0 };
 
 function readJson<T>(file: string, fallback: T): T {

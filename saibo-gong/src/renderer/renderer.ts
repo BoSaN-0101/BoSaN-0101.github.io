@@ -4,6 +4,7 @@ import { POE_NAMES, type PoeResult, type PoeThrow } from '../core/poe.ts';
 import { CONFESSION_LENGTHS, correctPrefixLength, normalizeTyped } from '../core/confession.ts';
 import type { ConfessionPrompt, Defiance, RitualRequest, SoulView, TempleApi, TempleState } from '../shared/api.ts';
 import { shoujingText, type Scared } from '../core/shoujing.ts';
+import { checkGreen } from '../core/guaiguai.ts';
 import type { Ghost } from '../core/pudu.ts';
 import type { FortuneReport } from '../core/fortune.ts';
 import { SEVERITY_NAMES } from '../core/fortune-names.ts';
@@ -125,6 +126,7 @@ function render(s: TempleState): void {
   $<HTMLButtonElement>('btn-fortune').disabled = !fortuneOn;
   $<HTMLInputElement>('auto-fortune').disabled = !fortuneOn;
 
+  renderGuaiguai(s);
   renderUnderworld(s);
   renderShoujing(s);
   renderPudu(s);
@@ -488,6 +490,176 @@ $('protected').addEventListener('change', () => {
     render(s);
   });
 });
+
+// ───────── 綠色乖乖 ─────────
+
+function renderGuaiguai(s: TempleState): void {
+  const g = s.guaiguai;
+  const on = s.features.some((f) => f.id === 'guaiguai' && f.enabled) && !s.closed;
+  const status = $('gg-status');
+  const detail = $('gg-detail');
+  status.className = 'big';
+  if (!g.registered) {
+    status.textContent = '尚未供奉';
+    detail.textContent = '機房沒有乖乖，全憑運氣。';
+  } else if (g.expired) {
+    status.textContent = `已過期 ${-g.daysLeft} 天`;
+    status.classList.add('bad');
+    detail.textContent = g.misbehaving
+      ? '乖乖不乖了：桌布歪掉、游標偶爾抖動、畫面掉碎屑。換一包新的就恢復。'
+      : g.pacifiedMinutes
+        ? `安撫中，還有 ${g.pacifiedMinutes} 分鐘。之後會繼續不乖。`
+        : on ? '乖乖過期了。' : '乖乖過期了（效果已停用）。';
+  } else {
+    status.textContent = g.daysLeft === 0 ? '今天到期' : `還有 ${g.daysLeft} 天到期`;
+    if (g.daysLeft <= 7) status.classList.add('warn');
+    detail.textContent = `有效日期 ${g.expiry}，機台乖乖的。`;
+  }
+  $('btn-gg-pacify').hidden = !g.misbehaving;
+  $<HTMLButtonElement>('btn-gg-new').disabled = !on;
+}
+
+$('btn-gg-pacify').addEventListener('click', () => void api.pacifyGuaiguai().then(render));
+
+const dlgGg = $<HTMLDialogElement>('dlg-gg');
+const ggVideo = $<HTMLVideoElement>('gg-video');
+const ggCanvas = $<HTMLCanvasElement>('gg-canvas');
+let ggStream: MediaStream | null = null;
+let ggGreen = false;
+
+function stopCamera(): void {
+  ggStream?.getTracks().forEach((t) => t.stop());
+  ggStream = null;
+  ggVideo.hidden = true;
+  $('gg-shoot').hidden = true;
+}
+
+function updateGgOk(): void {
+  $<HTMLButtonElement>('gg-ok').disabled = !ggGreen || !$<HTMLInputElement>('gg-date').value;
+}
+
+/** 照片進來之後：先看是不是綠色，再用本機文字辨識讀日期。 */
+async function examine(source: CanvasImageSource, w: number, h: number): Promise<void> {
+  const scale = Math.min(1, 1800 / Math.max(w, h));
+  ggCanvas.width = Math.round(w * scale);
+  ggCanvas.height = Math.round(h * scale);
+  const c = ggCanvas.getContext('2d', { willReadFrequently: true })!;
+  c.drawImage(source, 0, 0, ggCanvas.width, ggCanvas.height);
+  ggCanvas.hidden = false;
+  const color = checkGreen(c.getImageData(0, 0, ggCanvas.width, ggCanvas.height).data, ggCanvas.width, ggCanvas.height);
+  ggGreen = color.green;
+  const note = $('gg-color');
+  note.className = color.green ? 'ok' : 'bad';
+  note.textContent = color.green ? '是綠色的，可以供奉。' : `這包看起來是${color.dominant}的。只有綠色乖乖有效，其他口味不算。`;
+  const ocr = $('gg-ocr');
+  const date = $<HTMLInputElement>('gg-date');
+  updateGgOk();
+  if (!color.green) {
+    ocr.textContent = '';
+    return;
+  }
+  ocr.textContent = '辨識日期中……';
+  const r = await api.readGuaiguai(ggCanvas.toDataURL('image/jpeg', 0.92));
+  if (r.date) {
+    date.value = r.date;
+    ocr.textContent = '讀到了，請確認日期對不對。';
+  } else {
+    ocr.textContent = '讀不出日期，請手動輸入。';
+  }
+  updateGgOk();
+}
+
+$('btn-gg-new').addEventListener('click', () => {
+  ggGreen = false;
+  ggCanvas.hidden = true;
+  $<HTMLInputElement>('gg-date').value = '';
+  $('gg-color').textContent = '';
+  $('gg-ocr').textContent = '';
+  updateGgOk();
+  dlgGg.showModal();
+});
+
+$('gg-camera').addEventListener('click', async () => {
+  try {
+    ggStream = await navigator.mediaDevices.getUserMedia({ video: { width: { ideal: 1920 }, height: { ideal: 1080 } } });
+    ggVideo.srcObject = ggStream;
+    ggVideo.hidden = false;
+    ggCanvas.hidden = true;
+    $('gg-shoot').hidden = false;
+  } catch {
+    const n = $('gg-color');
+    n.className = 'bad';
+    n.textContent = '開不了鏡頭，請改用上傳照片。';
+  }
+});
+
+$('gg-shoot').addEventListener('click', () => {
+  if (!ggVideo.videoWidth) return;
+  const w = ggVideo.videoWidth;
+  const h = ggVideo.videoHeight;
+  void examine(ggVideo, w, h).then(stopCamera);
+});
+
+$('gg-upload').addEventListener('click', () => $<HTMLInputElement>('gg-file').click());
+$('gg-file').addEventListener('change', () => {
+  const input = $<HTMLInputElement>('gg-file');
+  const file = input.files?.[0];
+  input.value = '';
+  if (!file) return;
+  stopCamera();
+  const url = URL.createObjectURL(file);
+  const img = new Image();
+  img.onload = () => {
+    void examine(img, img.naturalWidth, img.naturalHeight);
+    URL.revokeObjectURL(url);
+  };
+  img.onerror = () => {
+    const n = $('gg-color');
+    n.className = 'bad';
+    n.textContent = '這個檔案不是可以讀的圖片。';
+  };
+  img.src = url;
+});
+
+$('gg-date').addEventListener('input', updateGgOk);
+$('gg-cancel').addEventListener('click', () => dlgGg.close());
+dlgGg.addEventListener('close', stopCamera);
+$('gg-ok').addEventListener('click', async () => {
+  const res = await api.registerGuaiguai($<HTMLInputElement>('gg-date').value);
+  if (!res.ok) {
+    $('gg-ocr').textContent = res.message;
+    return;
+  }
+  dlgGg.close();
+  render(await api.getState());
+  $('gg-detail').textContent = res.message;
+});
+
+// 主程序要把桌布轉歪時，請這裡的 canvas 代勞。稍微放大一點，轉了之後四角才不會露出空白。
+(window as unknown as { saiboRotate: (dataUrl: string, degrees: number) => Promise<string> }).saiboRotate = (dataUrl, degrees) =>
+  new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => {
+      const scale = Math.min(1, 3840 / Math.max(img.naturalWidth, img.naturalHeight));
+      const w = Math.round(img.naturalWidth * scale);
+      const h = Math.round(img.naturalHeight * scale);
+      const cv = document.createElement('canvas');
+      cv.width = w;
+      cv.height = h;
+      const c = cv.getContext('2d')!;
+      const rad = (degrees * Math.PI) / 180;
+      const zoom = Math.abs(Math.cos(rad)) + Math.abs(Math.sin(rad)) * Math.max(w / h, h / w);
+      c.fillStyle = '#000';
+      c.fillRect(0, 0, w, h);
+      c.translate(w / 2, h / 2);
+      c.rotate(rad);
+      c.scale(zoom, zoom);
+      c.drawImage(img, -w / 2, -h / 2, w, h);
+      resolve(cv.toDataURL('image/png'));
+    };
+    img.onerror = () => reject(new Error('image load failed'));
+    img.src = dataUrl;
+  });
 
 // ───────── 陰間回收筒 ─────────
 

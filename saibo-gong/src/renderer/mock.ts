@@ -42,6 +42,7 @@ export function createMock(): TempleApi {
     puduWhitelist: [],
     puduReminder: 'none' as const,
     windows: false,
+    guaiguai: { registered: false, expiry: '', daysLeft: 0, expired: false, misbehaving: false, pacifiedMinutes: 0 },
   });
   const emit = () => { const s = state(); listener?.(s); return s; };
   const forced = q.get('force');
@@ -81,6 +82,9 @@ export function createMock(): TempleApi {
     releaseGhosts: async () => ({ released: [], skipped: [] }),
     setPuduWhitelist: async () => emit(),
     dismissPuduReminder: async () => emit(),
+    readGuaiguai: async () => ({ date: null, text: '' }),
+    registerGuaiguai: async () => ({ ok: true, message: '（預覽）' }),
+    pacifyGuaiguai: async () => state(),
     drawFortune: async () => ({ ok: false as const, message: '（預覽模式不能抽籤）' }),
     getLastFortune: async () => null,
     setAutoFortune: async () => emit(),

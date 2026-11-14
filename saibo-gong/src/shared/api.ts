@@ -40,6 +40,16 @@ export interface TempleState {
   puduWhitelist: string[];
   puduReminder: 'none' | 'ghostMonth' | 'zhongyuan'; // 要不要提醒辦普渡
   windows: boolean; // 是不是在 Windows 上（收驚、普渡、右鍵選單只有 Windows 能用）
+  guaiguai: GuaiguaiView;
+}
+
+export interface GuaiguaiView {
+  registered: boolean;
+  expiry: string;
+  daysLeft: number;
+  expired: boolean;
+  misbehaving: boolean; // 不乖效果進行中
+  pacifiedMinutes: number; // 暫時安撫還剩幾分鐘（0 表示沒有在安撫）
 }
 
 export interface SoulView extends Soul {
@@ -136,6 +146,13 @@ export interface TempleApi {
   releaseGhosts(pids: number[]): Promise<{ released: string[]; skipped: string[] }>;
   setPuduWhitelist(text: string): Promise<TempleState>;
   dismissPuduReminder(): Promise<TempleState>;
+
+  // 綠色乖乖
+  /** 用本機文字辨識從包裝照片讀有效日期。讀不到時 date 是 null。 */
+  readGuaiguai(imageDataUrl: string): Promise<{ date: string | null; text: string }>;
+  registerGuaiguai(expiry: string): Promise<ActionResult>;
+  /** 暫時安撫：停用不乖效果一小時，不記功過簿。 */
+  pacifyGuaiguai(): Promise<TempleState>;
 
   /** 對一個 repo 抽籤（籤詩 code review）。 */
   drawFortune(dir: string): Promise<{ ok: true; report: FortuneReport } | { ok: false; message: string }>;

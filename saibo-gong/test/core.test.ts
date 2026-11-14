@@ -314,3 +314,41 @@ test('農民曆：認得農曆七月和中元正日', () => {
   assert.equal(getAlmanac(new Date(2026, 7, 27)).ghostMonth, true);
   assert.equal(getAlmanac(new Date(2026, 10, 14)).ghostMonth, false);
 });
+
+import { parseExpiry, checkGreen, guaiguaiStatus, isValidDate } from '../src/core/guaiguai.ts';
+
+test('綠色乖乖：從文字讀出有效日期（取最晚的）', () => {
+  assert.equal(parseExpiry('40s FH) 2026.05.20 | AEN 2027.03.15 |'), '2027-03-15');
+  assert.equal(parseExpiry('EXP 2027/6/5'), '2027-06-05');
+  assert.equal(parseExpiry('有效日期 2027年3月1日'), '2027-03-01');
+  assert.equal(parseExpiry('LOT 20270930 A1'), '2027-09-30');
+  assert.equal(parseExpiry('2027.02.30 1999.01.01 tel 0912345678'), null);
+  assert.equal(parseExpiry('乖乖'), null);
+  assert.equal(isValidDate('2027-03-15'), true);
+  assert.equal(isValidDate('2027-13-01'), false);
+});
+
+test('綠色乖乖：主色要是綠色，其他口味不算', () => {
+  const img = (r: number, g: number, b: number) => {
+    const d = new Uint8ClampedArray(100 * 100 * 4);
+    for (let i = 0; i < d.length; i += 4) {
+      const edge = (i / 4) % 100 < 10; // 一點灰色背景
+      d[i] = edge ? 200 : r; d[i + 1] = edge ? 200 : g; d[i + 2] = edge ? 200 : b; d[i + 3] = 255;
+    }
+    return d;
+  };
+  assert.equal(checkGreen(img(31, 157, 58), 100, 100).green, true);
+  assert.equal(checkGreen(img(242, 194, 26), 100, 100).green, false);
+  assert.equal(checkGreen(img(242, 194, 26), 100, 100).dominant, '黃色');
+  assert.equal(checkGreen(img(200, 30, 30), 100, 100).green, false);
+  assert.equal(checkGreen(img(230, 230, 230), 100, 100).green, false);
+});
+
+test('綠色乖乖：有效日期當天還有效，隔天才過期', () => {
+  const today = new Date(2026, 10, 14, 15, 30);
+  assert.deepEqual(guaiguaiStatus('2026-11-14', today), { registered: true, expiry: '2026-11-14', daysLeft: 0, expired: false });
+  assert.equal(guaiguaiStatus('2026-11-13', today).expired, true);
+  assert.equal(guaiguaiStatus('2026-11-13', today).daysLeft, -1);
+  assert.equal(guaiguaiStatus('2027-03-15', today).daysLeft, 121);
+  assert.equal(guaiguaiStatus('', today).registered, false);
+});

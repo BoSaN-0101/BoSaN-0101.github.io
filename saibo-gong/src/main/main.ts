@@ -1,4 +1,4 @@
-import { app, BrowserWindow, dialog, ipcMain, Menu, nativeImage, Notification, shell, Tray } from 'electron';
+import { app, BrowserWindow, dialog, ipcMain, Menu, nativeImage, Notification, session, shell, Tray } from 'electron';
 import { spawn } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
@@ -16,6 +16,8 @@ import { Underworld } from '../core/underworld.ts';
 import { findScared, SCARE_WINDOW_MS, type Scared } from '../core/shoujing.ts';
 import { findGhosts, parseWhitelist, type Ghost } from '../core/pudu.ts';
 import * as sys from './system.ts';
+import { Effects } from './effects.ts';
+import { guaiguaiStatus, isValidDate, parseExpiry } from '../core/guaiguai.ts';
 import type { ActionResult, Defiance, FeatureInfo, HookStatus, LedgerView, RitualOutcome, RitualRequest, TempleState } from '../shared/api.ts';
 
 const APP_NAME = '賽博宮';
@@ -34,7 +36,7 @@ const FEATURES: Omit<FeatureInfo, 'enabled'>[] = [
   { id: 'underworld', name: '陰間回收筒', desc: '「燒給它」與請回陽間', stage: 'M4', available: true },
   { id: 'shoujing', name: '收驚', desc: '連續當機的程式幫它收驚', stage: 'M4', available: true },
   { id: 'pudu', name: '中元普渡', desc: '超渡沒有回應與殘留的程式', stage: 'M4', available: true },
-  { id: 'guaiguai', name: '綠色乖乖', desc: '過期會不乖（效果皆可還原）', stage: 'M5', available: false },
+  { id: 'guaiguai', name: '綠色乖乖', desc: '過期會不乖（效果皆可還原）', stage: 'M5', available: true },
 ];
 
 const underworld = new Underworld({
@@ -84,6 +86,7 @@ function buildState(): TempleState {
     puduWhitelist: settings.puduWhitelist ?? [],
     puduReminder: puduReminder(),
     windows: sys.isWindows,
+    guaiguai: guaiguaiView(),
   };
 }
 
@@ -103,12 +106,81 @@ function closeTemple(): TempleState {
     if (hookServer.active) win?.webContents.send('ritual:cancel', hookServer.active.id);
     hookServer.releaseAll('閉廟中，這次放行。');
   }
+  void syncEffects(); // 閉廟會把不乖效果全部還原
   return broadcast();
 }
 
 function openTemple(): TempleState {
   store.updateSettings({ closed: false });
+  void syncEffects();
   return broadcast();
+}
+
+// ───────── 綠色乖乖 ─────────
+
+const PACIFY_MS = 60 * 60 * 1000;
+
+const effects = new Effects({
+  store,
+  dataDir,
+  crumbsPage: join(__dirname, 'renderer', 'crumbs.html'),
+  // 圖片的旋轉交給主殿畫面的 canvas 做（主殿視窗即使收在系統匣也還在）。
+  rotateImage: (dataUrl, degrees) => {
+    if (!win || win.isDestroyed()) return Promise.reject(new Error('no window'));
+    return win.webContents.executeJavaScript(`window.saiboRotate(${JSON.stringify(dataUrl)}, ${degrees})`) as Promise<string>;
+  },
+});
+
+/** 現在該不該不乖：功能開著、沒閉廟、供奉的乖乖已過期、而且不在安撫期間。 */
+function shouldMisbehave(): boolean {
+  const s = store.getSettings();
+  if (quitting || s.closed || s.features.guaiguai === false) return false;
+  if (Date.now() < (s.guaiguaiPacifiedUntil || 0)) return false;
+  return guaiguaiStatus(s.guaiguaiExpiry, today()).expired;
+}
+
+function guaiguaiView(): TempleState['guaiguai'] {
+  const s = store.getSettings();
+  const left = (s.guaiguaiPacifiedUntil || 0) - Date.now();
+  return { ...guaiguaiStatus(s.guaiguaiExpiry, today()), misbehaving: effects.isActive, pacifiedMinutes: left > 0 ? Math.ceil(left / 60000) : 0 };
+}
+
+let pacifyTimer: NodeJS.Timeout | null = null;
+
+/** 依目前狀態開或關不乖效果。任何會影響條件的地方都要呼叫。 */
+async function syncEffects(): Promise<void> {
+  const on = shouldMisbehave();
+  await effects.set(on);
+  // 沒在不乖時，確保桌布一定是原樣（例如上次 App 異常結束，桌布還歪著）。
+  if (!on) await effects.restoreWallpaper();
+  // 安撫時間到了要自動恢復不乖。
+  if (pacifyTimer) clearTimeout(pacifyTimer);
+  const left = (store.getSettings().guaiguaiPacifiedUntil || 0) - Date.now();
+  if (left > 0) pacifyTimer = setTimeout(() => void syncEffects(), left + 500).unref();
+  broadcast();
+}
+
+let ocrWorker: Promise<import('tesseract.js').Worker> | null = null;
+
+async function readGuaiguai(imageDataUrl: string): Promise<{ date: string | null; text: string }> {
+  const m = /^data:image\/(png|jpeg);base64,(.+)$/.exec(imageDataUrl);
+  if (!m) return { date: null, text: '' };
+  try {
+    // 文字辨識完全在本機執行；語言資料跟著 App 一起安裝，不需要網路。
+    ocrWorker ??= import('tesseract.js').then(({ createWorker }) =>
+      createWorker('eng', 1, {
+        langPath: join(__dirname, '..', 'node_modules', '@tesseract.js-data', 'eng', '4.0.0_best_int'),
+        cachePath: join(dataDir, 'guaiguai'),
+        gzip: true,
+      }),
+    );
+    const worker = await ocrWorker;
+    const { data } = await worker.recognize(Buffer.from(m[2], 'base64'));
+    return { date: parseExpiry(data.text), text: data.text };
+  } catch {
+    ocrWorker = null;
+    return { date: null, text: '' };
+  }
 }
 
 // ───────── 陰間回收筒 ─────────
@@ -484,8 +556,17 @@ if (!app.requestSingleInstanceLock()) {
     if (paths.length) queueBurn(paths);
     else showWindow();
   });
-  app.on('before-quit', () => {
+  let cleanedUp = false;
+  app.on('before-quit', (e) => {
     quitting = true;
+    // 離開前先把桌布等效果還原，還原完才真的結束。
+    if (!cleanedUp) {
+      e.preventDefault();
+      void effects.set(false).finally(() => {
+        cleanedUp = true;
+        app.quit();
+      });
+    }
     // 離開前把等著的 push 放行，不留人卡在終端機。
     hookServer.releaseAll('主殿關門了，這次放行。');
     hookServer.stop();
@@ -513,6 +594,7 @@ if (!app.requestSingleInstanceLock()) {
       if (FEATURES.some((f) => f.id === id && f.available)) {
         store.updateSettings({ features: { ...s.features, [id]: !!enabled } });
       }
+      void syncEffects();
       return broadcast();
     });
     ipcMain.handle('confession:pick', () => pickConfession(buildState().confessionLength));
@@ -588,6 +670,20 @@ if (!app.requestSingleInstanceLock()) {
       return broadcast();
     });
 
+    ipcMain.handle('guaiguai:read', (_e, image: string) => readGuaiguai(String(image)));
+    ipcMain.handle('guaiguai:register', async (_e, expiry: string): Promise<ActionResult> => {
+      if (!isValidDate(String(expiry))) return { ok: false, message: '日期格式不對，請用 西元年-月-日，例如 2027-03-15。' };
+      store.updateSettings({ guaiguaiExpiry: String(expiry), guaiguaiPacifiedUntil: 0 });
+      await syncEffects(); // 換上新乖乖：還沒過期的話，不乖效果全部還原
+      const g = guaiguaiView();
+      return { ok: true, message: g.expired ? `這包已經過期 ${-g.daysLeft} 天了，鎮不住。` : `供奉完成，還有 ${g.daysLeft} 天到期。` };
+    });
+    ipcMain.handle('guaiguai:pacify', async () => {
+      store.updateSettings({ guaiguaiPacifiedUntil: Date.now() + PACIFY_MS });
+      await syncEffects();
+      return buildState();
+    });
+
     ipcMain.handle('fortune:draw', async (_e, dir: string) => {
       if (store.getSettings().closed) return { ok: false, message: '閉廟中，不抽籤。' };
       if (!featureOn('fortune')) return { ok: false, message: '籤詩 code review 已關閉。' };
@@ -614,5 +710,11 @@ if (!app.requestSingleInstanceLock()) {
     void checkCrashes();
     setInterval(() => void checkCrashes(), 5 * 60 * 1000).unref();
     zhongyuanNotify();
+
+    // 綠色乖乖：允許主殿用鏡頭拍包裝（只給這個 App 自己的畫面）。
+    session.defaultSession.setPermissionRequestHandler((wc, permission, cb) => cb(permission === 'media' && wc === win?.webContents));
+    // 畫面載入好之後才能請它轉桌布；之後每十分鐘檢查一次有沒有過期。
+    win?.webContents.once('did-finish-load', () => void syncEffects());
+    setInterval(() => void syncEffects(), 10 * 60 * 1000).unref();
   });
 }

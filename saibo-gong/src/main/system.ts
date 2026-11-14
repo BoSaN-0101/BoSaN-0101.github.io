@@ -17,11 +17,18 @@ function run(cmd: string, args: string[], timeout = 30000): Promise<{ ok: boolea
   });
 }
 
+/** 執行一段 PowerShell，回傳它印出來的文字。用 -EncodedCommand 傳，避開命令列引號的各種陷阱。 */
+export async function powershellText(script: string): Promise<string> {
+  const full = `[Console]::OutputEncoding=[Text.Encoding]::UTF8\n$ErrorActionPreference='SilentlyContinue'\n$ProgressPreference='SilentlyContinue'\n${script}`;
+  const encoded = Buffer.from(full, 'utf16le').toString('base64');
+  const r = await run('powershell.exe', ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-EncodedCommand', encoded]);
+  return r.stdout;
+}
+
 async function powershell<T>(script: string, fallback: T): Promise<T> {
-  const full = `[Console]::OutputEncoding=[Text.Encoding]::UTF8; $ErrorActionPreference='SilentlyContinue'; ${script}`;
-  const r = await run('powershell.exe', ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-Command', full]);
+  const stdout = await powershellText(script);
   try {
-    const text = r.stdout.trim();
+    const text = stdout.trim();
     return text ? (JSON.parse(text) as T) : fallback;
   } catch {
     return fallback;
