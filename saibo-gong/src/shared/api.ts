@@ -6,6 +6,9 @@ import type { Stats } from '../core/store.ts';
 import type { ConfessionLength } from '../core/confession.ts';
 import type { Almanac } from '../core/almanac.ts';
 import type { FortuneReport } from '../core/fortune.ts';
+import type { Soul } from '../core/underworld.ts';
+import type { Scared } from '../core/shoujing.ts';
+import type { Ghost } from '../core/pudu.ts';
 
 export interface FeatureInfo {
   id: string;
@@ -31,6 +34,17 @@ export interface TempleState {
   protectedBranches: string[];
   autoFortune: boolean;
   fortuneRepos: string[]; // 可以直接選來抽籤的 repo
+  souls: SoulView[]; // 陰間裡的檔案
+  underworldDays: number;
+  scared: Scared[]; // 被嚇到、還沒收驚的程式
+  puduWhitelist: string[];
+  puduReminder: 'none' | 'ghostMonth' | 'zhongyuan'; // 要不要提醒辦普渡
+  windows: boolean; // 是不是在 Windows 上（收驚、普渡、右鍵選單只有 Windows 能用）
+}
+
+export interface SoulView extends Soul {
+  days: number; // 在陰間待了幾天
+  overdue: boolean; // 超過期限，可以提議超渡
 }
 
 export interface LedgerView {
@@ -97,6 +111,31 @@ export interface TempleApi {
   uninstallRepoHook(dir: string): Promise<ActionResult>;
   installGlobalHook(): Promise<ActionResult>;
   uninstallGlobalHook(): Promise<ActionResult>;
+
+  // 陰間回收筒
+  chooseFiles(): Promise<string[]>;
+  /** 從檔案總管右鍵「燒給它」送進來、等著確認的檔案。 */
+  pullBurnRequests(): Promise<string[]>;
+  onBurnRequest(cb: (paths: string[]) => void): void;
+  burnFiles(paths: string[]): Promise<ActionResult>;
+  /** 擲到聖筊後還陽（forced = false），或不擲筊強制還陽（forced = true，會記入功過簿）。 */
+  restoreSoul(id: string, forced: boolean): Promise<ActionResult>;
+  /** 超渡：移到 Windows 真正的回收筒。 */
+  releaseSouls(ids: string[]): Promise<ActionResult>;
+  getContextMenu(): Promise<boolean>;
+  setContextMenu(on: boolean): Promise<ActionResult>;
+
+  // 收驚
+  checkCrashes(): Promise<TempleState>;
+  finishShoujing(key: string): Promise<TempleState>;
+  restartProgram(path: string): Promise<ActionResult>;
+
+  // 中元普渡
+  findGhosts(): Promise<Ghost[]>;
+  /** 結束使用者勾選的程式。 */
+  releaseGhosts(pids: number[]): Promise<{ released: string[]; skipped: string[] }>;
+  setPuduWhitelist(text: string): Promise<TempleState>;
+  dismissPuduReminder(): Promise<TempleState>;
 
   /** 對一個 repo 抽籤（籤詩 code review）。 */
   drawFortune(dir: string): Promise<{ ok: true; report: FortuneReport } | { ok: false; message: string }>;

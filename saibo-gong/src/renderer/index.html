@@ -100,6 +100,36 @@
     <p id="fortune-msg" class="muted" role="status"></p>
   </section>
 
+  <section class="card underworld">
+    <h2>陰間回收筒</h2>
+    <ul id="souls" class="souls"></ul>
+    <div class="row">
+      <button id="btn-burn" class="btn">燒給它…</button>
+      <button id="btn-release-overdue" class="btn" hidden></button>
+      <span class="spacer"></span>
+      <label><input id="uw-menu" type="checkbox"> 檔案總管右鍵選單「燒給它」</label>
+    </div>
+    <p id="uw-msg" class="muted" role="status"></p>
+  </section>
+
+  <section class="card shoujing">
+    <h2>收驚 <button id="btn-crash-check" class="btn small">重新檢查</button></h2>
+    <ul id="scared" class="souls"></ul>
+    <p id="sj-msg" class="muted" role="status"></p>
+  </section>
+
+  <section class="card pudu">
+    <h2>中元普渡</h2>
+    <p id="pudu-remind" class="remind" hidden></p>
+    <div class="row">
+      <button id="btn-pudu" class="btn">辦小普渡</button>
+      <span class="spacer"></span>
+      <label for="pudu-white">永遠不碰的程式</label>
+      <input id="pudu-white" type="text" spellcheck="false" autocomplete="off" placeholder="例如 obs64, steam">
+    </div>
+    <p id="pudu-msg" class="muted" role="status"></p>
+  </section>
+
   <section class="card features">
     <h2>各殿功能</h2>
     <ul id="features"></ul>
@@ -143,6 +173,44 @@
     </section>
     <section id="f-names-sec"><h3>宜改名</h3><ul id="f-names" class="names"></ul><p id="f-names-note" class="muted"></p></section>
     <section><h3>審視範圍</h3><ul id="f-tools" class="tools"></ul></section>
+  </div>
+</dialog>
+
+<dialog id="dlg-shoujing" class="dlg rite">
+  <header><h2>收驚</h2></header>
+  <div class="altar">
+    <div class="orbit"><div id="sj-cloth" class="cloth"></div></div>
+    <div class="burner big"><i></i><i></i><i></i></div>
+  </div>
+  <div id="sj-text" class="chant"></div>
+  <p id="sj-ask" class="confirm-body" hidden></p>
+  <footer>
+    <span class="spacer"></span>
+    <button id="sj-no" class="btn ghost" hidden>不用</button>
+    <button id="sj-yes" class="btn" hidden>重新啟動</button>
+  </footer>
+</dialog>
+
+<dialog id="dlg-pudu" class="dlg wide rite">
+  <header><h2>普渡</h2><span class="spacer"></span><button id="pudu-close" class="btn small" hidden>收壇</button></header>
+  <div id="pudu-anim" class="altar pudu-altar">
+    <div class="lanterns"><i></i><i></i><i></i><i></i><i></i></div>
+    <div class="offerings"><b>飯</b><b>菜</b><b>果</b><b>酒</b><b>餅</b></div>
+    <div class="burner big"><i></i><i></i><i></i></div>
+    <p class="chant">一請四方好兄弟，二請無主諸程式，香火已備，前來享用。</p>
+  </div>
+  <div id="pudu-list" hidden>
+    <p id="pudu-summary" class="confirm-body"></p>
+    <div class="tablewrap"><table>
+      <thead><tr><th></th><th>程式</th><th>狀況</th><th>已執行</th><th>位置</th></tr></thead>
+      <tbody id="pudu-body"></tbody>
+    </table></div>
+    <p id="pudu-result" class="confirm-body" role="status"></p>
+    <footer>
+      <span class="spacer"></span>
+      <button id="pudu-cancel" class="btn ghost">不超渡</button>
+      <button id="pudu-go" class="btn danger">超渡勾選的</button>
+    </footer>
   </div>
 </dialog>
 

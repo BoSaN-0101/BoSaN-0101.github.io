@@ -15,6 +15,11 @@ export interface Settings {
   hookRepos: string[]; // 個別安裝了擲筊 push 的 repo
   autoFortune: boolean; // push 前自動抽籤（只顯示，不擋）
   fortuneRepos: string[]; // 抽過籤的 repo，方便下次選
+  underworldDays: number; // 陰間的檔案超過幾天提議超渡
+  shoujingHandled: string[]; // 已經收過驚的當機批次
+  puduWhitelist: string[]; // 普渡永遠不碰的程式
+  puduRemindedYear: number; // 哪一年的農曆七月已經提醒過
+  zhongyuanNotified: string; // 哪一天的中元正日已經通知過
 }
 
 export interface Stats {
@@ -31,7 +36,7 @@ export interface Stats {
 
 export type PushOutcome = 'pushBlessed' | 'pushDefied' | 'pushAbandoned' | 'pushAbsent';
 
-const DEFAULT_SETTINGS: Settings = { closed: false, features: {}, confessionLength: DEFAULT_CONFESSION_LENGTH, confessionHintShown: false, protectedBranches: DEFAULT_PROTECTED, hookRepos: [], autoFortune: false, fortuneRepos: [] };
+const DEFAULT_SETTINGS: Settings = { closed: false, features: {}, confessionLength: DEFAULT_CONFESSION_LENGTH, confessionHintShown: false, protectedBranches: DEFAULT_PROTECTED, hookRepos: [], autoFortune: false, fortuneRepos: [], underworldDays: 30, shoujingHandled: [], puduWhitelist: [], puduRemindedYear: 0, zhongyuanNotified: '' };
 const DEFAULT_STATS: Stats = { throws: 0, sheng: 0, xiao: 0, yin: 0, pushes: 0, pushBlessed: 0, pushDefied: 0, pushAbandoned: 0, pushAbsent: 0 };
 
 function readJson<T>(file: string, fallback: T): T {

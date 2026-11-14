@@ -2,7 +2,9 @@ import { PoeStage } from './poe-stage.ts';
 import { createMock } from './mock.ts';
 import { POE_NAMES, type PoeResult, type PoeThrow } from '../core/poe.ts';
 import { CONFESSION_LENGTHS, correctPrefixLength, normalizeTyped } from '../core/confession.ts';
-import type { ConfessionPrompt, Defiance, RitualRequest, TempleApi, TempleState } from '../shared/api.ts';
+import type { ConfessionPrompt, Defiance, RitualRequest, SoulView, TempleApi, TempleState } from '../shared/api.ts';
+import { shoujingText, type Scared } from '../core/shoujing.ts';
+import type { Ghost } from '../core/pudu.ts';
 import type { FortuneReport } from '../core/fortune.ts';
 import { SEVERITY_NAMES } from '../core/fortune-names.ts';
 import type { LedgerEntry } from '../core/ledger.ts';
@@ -123,6 +125,10 @@ function render(s: TempleState): void {
   $<HTMLButtonElement>('btn-fortune').disabled = !fortuneOn;
   $<HTMLInputElement>('auto-fortune').disabled = !fortuneOn;
 
+  renderUnderworld(s);
+  renderShoujing(s);
+  renderPudu(s);
+
   const prot = $<HTMLInputElement>('protected');
   if (document.activeElement !== prot) prot.value = s.protectedBranches.join(', ');
 
@@ -151,6 +157,7 @@ function render(s: TempleState): void {
 
 interface Ritual {
   req: RitualRequest | null;
+  revive?: SoulView; // 請回陽間：擲到聖筊才還原，不限次數
   phase: 'almanac' | 'poe' | 'done';
   used: number;
   max: number;
@@ -178,7 +185,9 @@ function updateControls(): void {
   const r = ritual;
   const left = r ? r.max - r.used : 0;
 
-  banner.hidden = !r?.req;
+  banner.hidden = !r?.req && !r?.revive;
+  if (r?.revive) banner.replaceChildren('請回陽間：', el('b', r.revive.name), '　擲到聖筊才能還原');
+  defy.textContent = r?.revive ? '強制還陽' : '硬闖';
   if (r?.req) {
     banner.replaceChildren('git push 求神明准許：', el('b', `${r.req.repo} → ${r.req.refs}`));
     // push 前自動抽的籤，放在這裡隨時可看，不打斷擲筊。
@@ -189,10 +198,10 @@ function updateControls(): void {
     }
   }
 
-  stage.enabled = !closed && (!r || (r.phase === 'poe' && left > 0));
+  stage.enabled = !closed && (!r || (r.phase === 'poe' && (left > 0 || !!r.revive)));
   auto.disabled = closed;
   drillBtn.disabled = closed;
-  drillBtn.hidden = !!r?.req;
+  drillBtn.hidden = !!r?.req || !!r?.revive;
   drillBtn.textContent = r ? '結束演練' : '演練 push 儀式';
 
   if (!r) {
@@ -201,6 +210,15 @@ function updateControls(): void {
     auto.textContent = '代為擲筊';
     defy.hidden = true;
     giveup.hidden = true;
+    return;
+  }
+  if (r.revive) {
+    const live = r.phase !== 'done';
+    label.textContent = live ? `請回陽間：第 ${r.used + 1} 擲` : '還陽儀式結束';
+    auto.hidden = !live;
+    auto.textContent = r.used === 0 ? '代為擲筊' : '再擲一次';
+    defy.hidden = !live;
+    giveup.hidden = !live;
     return;
   }
   const real = !!r.req;
@@ -263,7 +281,7 @@ stage.onGrab = () => {
 
 stage.onThrow = async () => {
   if (state.closed) return null;
-  if (ritual && (ritual.phase !== 'poe' || ritual.used >= ritual.max)) return null;
+  if (ritual && (ritual.phase !== 'poe' || (ritual.used >= ritual.max && !ritual.revive))) return null;
   $('hint').hidden = true;
   $('result').hidden = true;
   const t = await api.throwPoe();
@@ -274,6 +292,20 @@ stage.onThrow = async () => {
 stage.onLanded = (t: PoeThrow) => {
   const ok = t.result === 'sheng';
   const r = ritual;
+  if (r?.revive) {
+    if (ok) {
+      r.phase = 'done';
+      showResult('聖筊', '神明准了，還陽中……', false);
+      void api.restoreSoul(r.revive.id, false).then((res) => {
+        showResult(res.ok ? '還陽' : '還陽失敗', res.message, !res.ok);
+        closeRevive(r);
+      });
+    } else {
+      showResult(POE_NAMES[t.result], `${RESULT_DESC[t.result]}。可以再擲，或強制還陽`, true);
+    }
+    updateControls();
+    return;
+  }
   if (!r) {
     showResult(POE_NAMES[t.result], RESULT_DESC[t.result], !ok);
   } else if (ok) {
@@ -306,6 +338,10 @@ $('btn-drill').addEventListener('click', () => {
 $('btn-defy').addEventListener('click', async () => {
   const r = ritual;
   if (!r || r.phase === 'done' || stage.busy) return;
+  if (r.revive) {
+    await forceRestore(r.revive);
+    return;
+  }
   const d = await askConfession();
   if (!d || ritual !== r) return;
   if (r.phase === 'almanac') {
@@ -326,6 +362,13 @@ $('btn-defy').addEventListener('click', async () => {
 });
 
 $('btn-giveup').addEventListener('click', () => {
+  if (ritual?.revive && !stage.busy) {
+    ritual = null;
+    $('result').hidden = true;
+    stage.reset();
+    updateControls();
+    return;
+  }
   if (!ritual?.req || ritual.phase === 'done' || stage.busy) return;
   showResult('作罷', '從神明之意，push 取消', true);
   endRitual(false, false);
@@ -333,6 +376,7 @@ $('btn-giveup').addEventListener('click', () => {
 
 api.onRitualStart((req) => {
   if (ritual?.req?.id === req.id) return;
+  if (dlgConfirm.open) finishConfirm(false);
   if (dlgConfess.open) finishConfess(null);
   startRitual(req);
 });
@@ -441,6 +485,299 @@ $('btn-hook-global').addEventListener('click', async () => {
 $('protected').addEventListener('change', () => {
   void api.setProtectedBranches($<HTMLInputElement>('protected').value).then((s) => {
     $<HTMLInputElement>('protected').blur();
+    render(s);
+  });
+});
+
+// ───────── 陰間回收筒 ─────────
+
+function note(id: string, text: string, ok: boolean): void {
+  const m = $(id);
+  m.textContent = text;
+  m.className = ok ? 'ok' : 'bad';
+}
+
+function closeRevive(r: Ritual): void {
+  setTimeout(() => {
+    if (ritual === r) {
+      ritual = null;
+      updateControls();
+    }
+  }, 2500);
+}
+
+async function forceRestore(soul: SoulView): Promise<void> {
+  const ok = await askConfirm('強制還陽', `不擲筊，直接把檔案還原到原本的位置。這會記入功過簿。\n${soul.originalPath}`, '強制還陽');
+  if (!ok) return;
+  const res = await api.restoreSoul(soul.id, true);
+  note('uw-msg', res.message, res.ok);
+  if (ritual?.revive?.id === soul.id) {
+    const r = ritual;
+    r.phase = 'done';
+    showResult(res.ok ? '強制還陽' : '還陽失敗', res.message, true);
+    updateControls();
+    closeRevive(r);
+  }
+}
+
+async function releaseSouls(souls: SoulView[]): Promise<void> {
+  if (souls.length === 0) return;
+  const names = souls.map((s) => s.name).join('、');
+  const ok = await askConfirm('超渡', `要把這些檔案從陰間移到 Windows 的資源回收筒嗎？之後仍可從資源回收筒救回。\n${names}`, '超渡');
+  if (!ok) return;
+  const res = await api.releaseSouls(souls.map((s) => s.id));
+  note('uw-msg', res.message, res.ok);
+}
+
+function renderUnderworld(s: TempleState): void {
+  const on = s.features.some((f) => f.id === 'underworld' && f.enabled) && !s.closed;
+  const list = $('souls');
+  list.replaceChildren();
+  if (s.souls.length === 0) list.append(el('li', '陰間空蕩蕩，沒有檔案。', 'muted'));
+  for (const soul of s.souls) {
+    const li = el('li');
+    const info = el('div', '', 'info');
+    info.append(el('b', soul.name), el('code', soul.originalPath));
+    const revive = el('button', '請回陽間', 'btn small');
+    revive.disabled = !on || !!ritual;
+    revive.title = '擲到聖筊才能還原';
+    revive.addEventListener('click', () => {
+      if (ritual || stage.busy) return;
+      ritual = { req: null, revive: soul, phase: 'poe', used: 0, max: 1 };
+      $('result').hidden = true;
+      $('hint').hidden = false;
+      stage.reset();
+      updateControls();
+      $('stage').scrollIntoView({ behavior: 'smooth', block: 'center' });
+    });
+    const force = el('button', '強制還陽', 'btn small ghost');
+    force.title = '不擲筊直接還原，會記入功過簿。隨時可用。';
+    force.addEventListener('click', () => void forceRestore(soul));
+    const release = el('button', '超渡', 'btn small ghost');
+    release.title = '移到 Windows 的資源回收筒';
+    release.addEventListener('click', () => void releaseSouls([soul]));
+    li.append(info, el('span', soul.days ? `${soul.days} 天` : '今天', 'days' + (soul.overdue ? ' overdue' : '')), revive, force, release);
+    list.append(li);
+  }
+  const overdue = s.souls.filter((x) => x.overdue);
+  const btn = $<HTMLButtonElement>('btn-release-overdue');
+  btn.hidden = overdue.length === 0;
+  btn.textContent = `超渡滯留超過 ${s.underworldDays} 天的 ${overdue.length} 個`;
+  btn.onclick = () => void releaseSouls(overdue);
+  $<HTMLButtonElement>('btn-burn').disabled = !on;
+  $<HTMLInputElement>('uw-menu').disabled = !s.windows;
+  $<HTMLInputElement>('uw-menu').parentElement!.title = s.windows ? '' : '只有 Windows 能安裝右鍵選單';
+}
+
+// 檔案總管右鍵「燒給它」可能一次送來好幾個檔案，合成一次確認。
+let burnQueue: string[] = [];
+let burnPromptOpen = false;
+
+async function promptBurn(paths: string[]): Promise<void> {
+  burnQueue = [...new Set([...burnQueue, ...paths])];
+  const body = () => `要把這些檔案搬到陰間嗎？之後可以在主殿請回陽間。\n${burnQueue.join('\n')}`;
+  if (burnPromptOpen) {
+    $('confirm-body').textContent = body();
+    return;
+  }
+  burnPromptOpen = true;
+  const ok = await askConfirm('燒給它', body(), '燒');
+  burnPromptOpen = false;
+  const list = burnQueue;
+  burnQueue = [];
+  if (!ok) {
+    void api.pullBurnRequests();
+    return;
+  }
+  const res = await api.burnFiles(list);
+  note('uw-msg', res.message, res.ok);
+}
+
+$('btn-burn').addEventListener('click', async () => {
+  const files = await api.chooseFiles();
+  if (files.length) void promptBurn(files);
+});
+api.onBurnRequest((paths) => void promptBurn(paths));
+
+async function refreshMenu(): Promise<void> {
+  $<HTMLInputElement>('uw-menu').checked = await api.getContextMenu();
+}
+$('uw-menu').addEventListener('change', async () => {
+  const box = $<HTMLInputElement>('uw-menu');
+  const on = box.checked;
+  const ok = await askConfirm(
+    on ? '安裝右鍵選單' : '移除右鍵選單',
+    on ? '會在登錄檔（只限你這個使用者）加上檔案總管右鍵選單「燒給它」。隨時可以在這裡移除。' : '會把右鍵選單的「燒給它」從登錄檔移除。',
+    on ? '安裝' : '移除',
+  );
+  if (ok) {
+    const res = await api.setContextMenu(on);
+    note('uw-msg', res.message, res.ok);
+  }
+  void refreshMenu();
+});
+
+// ───────── 收驚 ─────────
+
+const dlgSj = $<HTMLDialogElement>('dlg-shoujing');
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+function renderShoujing(s: TempleState): void {
+  const list = $('scared');
+  list.replaceChildren();
+  const on = s.features.some((f) => f.id === 'shoujing' && f.enabled) && !s.closed;
+  if (s.scared.length === 0) {
+    list.append(el('li', !s.windows ? '收驚要讀 Windows 的當機紀錄，只在 Windows 上運作。' : on ? '目前沒有程式被嚇到。' : '收驚暫停中。', 'muted'));
+  }
+  for (const sc of s.scared) {
+    const li = el('li');
+    const info = el('div', '', 'info');
+    info.append(el('b', `${sc.name} 被嚇到了`), el('code', `一小時內當掉 ${sc.count} 次　出事的模組：${sc.module || '不明'}`));
+    const go = el('button', '收驚', 'btn small');
+    go.addEventListener('click', () => void runShoujing(sc));
+    li.append(info, go);
+    list.append(li);
+  }
+  $<HTMLButtonElement>('btn-crash-check').disabled = !on;
+}
+
+async function runShoujing(sc: Scared): Promise<void> {
+  const cloth = $('sj-cloth');
+  cloth.replaceChildren(el('b', sc.name), `一小時內當掉 ${sc.count} 次`, el('br'), `最後一次 ${fmtTime(sc.lastTime)}`, el('br'), `模組 ${sc.module || '不明'}　代碼 ${sc.code || '不明'}`);
+  const text = $('sj-text');
+  text.replaceChildren();
+  for (const id of ['sj-ask', 'sj-yes', 'sj-no']) $(id).hidden = true;
+  const orbit = dlgSj.querySelector('.orbit')!;
+  orbit.classList.remove('go');
+  dlgSj.showModal();
+  void (orbit as HTMLElement).offsetWidth;
+  orbit.classList.add('go'); // 衣服在香爐上繞三圈
+  const lines = shoujingText(sc.name);
+  for (let i = 0; i < lines.length; i += 2) {
+    text.replaceChildren(el('span', lines[i] + (lines[i + 1] ?? '')));
+    await sleep(1560);
+    if (!dlgSj.open) return;
+  }
+  orbit.classList.remove('go');
+  text.replaceChildren(el('span', '收驚完畢。'));
+  await api.finishShoujing(sc.key).then(render);
+  const ask = $('sj-ask');
+  ask.hidden = false;
+  const yes = $<HTMLButtonElement>('sj-yes');
+  const no = $<HTMLButtonElement>('sj-no');
+  no.hidden = false;
+  if (sc.path) {
+    ask.textContent = `要不要重新啟動 ${sc.name}？\n${sc.path}`;
+    yes.hidden = false;
+    no.textContent = '不用';
+  } else {
+    ask.textContent = `查不到 ${sc.name} 的位置，要用的話請自己重新開啟。`;
+    no.textContent = '知道了';
+  }
+  yes.onclick = async () => {
+    const res = await api.restartProgram(sc.path);
+    note('sj-msg', res.message, res.ok);
+    dlgSj.close();
+  };
+  no.onclick = () => dlgSj.close();
+}
+
+$('btn-crash-check').addEventListener('click', async () => {
+  note('sj-msg', '檢查中……', true);
+  render(await api.checkCrashes());
+  note('sj-msg', '', true);
+});
+
+// ───────── 中元普渡 ─────────
+
+const dlgPudu = $<HTMLDialogElement>('dlg-pudu');
+let puduGhosts: Ghost[] = [];
+
+function renderPudu(s: TempleState): void {
+  const on = s.features.some((f) => f.id === 'pudu' && f.enabled) && !s.closed;
+  $<HTMLButtonElement>('btn-pudu').disabled = !on;
+  $('btn-pudu').textContent = s.almanac.ghostMonth ? '辦普渡' : '辦小普渡';
+  const white = $<HTMLInputElement>('pudu-white');
+  if (document.activeElement !== white) white.value = s.puduWhitelist.join(', ');
+  const remind = $('pudu-remind');
+  remind.hidden = s.puduReminder === 'none';
+  if (s.puduReminder !== 'none') {
+    const go = el('button', '辦普渡', 'btn small');
+    go.addEventListener('click', () => {
+      void api.dismissPuduReminder().then(render);
+      void runPudu();
+    });
+    const later = el('button', s.puduReminder === 'zhongyuan' ? '今天不辦' : '今年先不用', 'btn small ghost');
+    later.addEventListener('click', () => void api.dismissPuduReminder().then(render));
+    remind.replaceChildren(s.puduReminder === 'zhongyuan' ? '今日農曆七月十五，中元正日。要不要辦一場普渡？' : '農曆七月到了。要不要辦一場普渡，超渡沒有回應的程式？', el('span', '', 'spacer'), go, later);
+  }
+}
+
+async function runPudu(): Promise<void> {
+  $('pudu-anim').hidden = false;
+  $('pudu-list').hidden = true;
+  $('pudu-close').hidden = true;
+  $('pudu-result').textContent = '';
+  dlgPudu.showModal();
+  // 儀式進行的同時去清點名單。
+  const [ghosts] = await Promise.all([api.findGhosts(), sleep(3600)]);
+  if (!dlgPudu.open) return;
+  puduGhosts = ghosts;
+  $('pudu-anim').hidden = true;
+  $('pudu-list').hidden = false;
+  const hung = ghosts.filter((g) => g.kind === 'hung').length;
+  $('pudu-summary').textContent = ghosts.length
+    ? `找到 ${ghosts.length} 個可以超渡的程式：沒有回應的 ${hung} 個（已勾選），殘留在背景的 ${ghosts.length - hung} 個（預設不勾）。\n系統程式、系統服務、防毒軟體和賽博宮自己不在名單上。`
+    : state.windows ? '四方平靜，沒有需要超渡的程式。' : '普渡要清點 Windows 的執行中程式，只在 Windows 上運作。';
+  const body = $('pudu-body');
+  body.replaceChildren();
+  for (const g of ghosts) {
+    const tr = el('tr');
+    const box = el('input');
+    box.type = 'checkbox';
+    box.checked = g.kind === 'hung';
+    box.dataset.pid = String(g.pid);
+    box.setAttribute('aria-label', g.name);
+    box.addEventListener('change', updatePuduButton);
+    const td = el('td');
+    td.append(box);
+    tr.append(td, el('td', `${g.name}${g.title ? `（${g.title}）` : ''}`), el('td', g.kind === 'hung' ? '沒有回應' : '殘留在背景，幾乎沒在動'), el('td', `${g.hours} 小時`), el('td', g.path));
+    body.append(tr);
+  }
+  body.closest('.tablewrap')!.toggleAttribute('hidden', ghosts.length === 0);
+  $('pudu-go').hidden = ghosts.length === 0;
+  $('pudu-cancel').textContent = ghosts.length ? '不超渡' : '收壇';
+  updatePuduButton();
+}
+
+function checkedPids(): number[] {
+  return [...$('pudu-body').querySelectorAll<HTMLInputElement>('input:checked')].map((b) => Number(b.dataset.pid));
+}
+function updatePuduButton(): void {
+  const n = checkedPids().length;
+  const go = $<HTMLButtonElement>('pudu-go');
+  go.disabled = n === 0;
+  go.textContent = `超渡勾選的 ${n} 個`;
+}
+
+$('btn-pudu').addEventListener('click', () => void runPudu());
+$('pudu-cancel').addEventListener('click', () => dlgPudu.close());
+$('pudu-close').addEventListener('click', () => dlgPudu.close());
+$('pudu-go').addEventListener('click', async () => {
+  const pids = checkedPids();
+  const names = puduGhosts.filter((g) => pids.includes(g.pid)).map((g) => g.name).join('、');
+  const ok = await askConfirm('超渡', `要結束這 ${pids.length} 個程式嗎？它們還沒儲存的資料會遺失。\n${names}`, '超渡');
+  if (!ok) return;
+  const res = await api.releaseGhosts(pids);
+  $('pudu-result').textContent = [res.released.length ? `已超渡：${res.released.join('、')}` : '', res.skipped.length ? `沒有超渡：${res.skipped.join('、')}` : ''].filter(Boolean).join('\n');
+  for (const b of $('pudu-body').querySelectorAll<HTMLInputElement>('input')) b.disabled = true;
+  $('pudu-go').hidden = true;
+  $('pudu-cancel').textContent = '收壇';
+  note('pudu-msg', `普渡圓滿，超渡了 ${res.released.length} 個程式。`, true);
+});
+$('pudu-white').addEventListener('change', () => {
+  void api.setPuduWhitelist($<HTMLInputElement>('pudu-white').value).then((s) => {
+    $<HTMLInputElement>('pudu-white').blur();
     render(s);
   });
 });
@@ -668,6 +1005,9 @@ void api.getState().then(async (s) => {
   render(s);
   void refreshHooks();
   setLastFortune(await api.getLastFortune());
+  void refreshMenu();
+  const burning = await api.pullBurnRequests();
+  if (burning.length) void promptBurn(burning);
   // 主殿是被 git push 叫起來的話，一開門就有儀式在等。
   const pending = await api.pullRitual();
   if (pending) startRitual(pending);

@@ -9,6 +9,8 @@ export interface Almanac {
   yi: string[]; // 宜
   ji: string[]; // 忌
   jiKaishi: boolean; // 今日忌開市 → 不宜正式上線
+  ghostMonth: boolean; // 農曆七月
+  zhongyuan: boolean; // 農曆七月十五，中元正日
 }
 
 const S2T: Record<string, string> = {
@@ -48,5 +50,7 @@ export function getAlmanac(day: Date = new Date()): Almanac {
     ji,
     // 「諸事不宜」的日子當然也不宜開市。
     jiKaishi: ji.includes(KAISHI) || ji.includes('諸事不宜'),
+    ghostMonth: Math.abs(lunar.getMonth()) === 7,
+    zhongyuan: lunar.getMonth() === 7 && lunar.getDay() === 15,
   };
 }

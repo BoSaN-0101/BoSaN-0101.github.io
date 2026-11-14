@@ -1,4 +1,6 @@
-import { app, BrowserWindow, dialog, ipcMain, Menu, nativeImage, Tray } from 'electron';
+import { app, BrowserWindow, dialog, ipcMain, Menu, nativeImage, Notification, shell, Tray } from 'electron';
+import { spawn } from 'node:child_process';
+import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { throwPoe } from '../core/poe.ts';
 import { Ledger } from '../core/ledger.ts';
@@ -10,6 +12,10 @@ import { DEFAULT_PROTECTED, describeRefs, parseBranchList, releaseTargets, repoN
 import * as hooks from '../core/hooks.ts';
 import { drawFortune, loadStrokeTable, type FortuneReport } from '../core/fortune.ts';
 import { HookServer, type Decision, type PendingPush } from './hook-server.ts';
+import { Underworld } from '../core/underworld.ts';
+import { findScared, SCARE_WINDOW_MS, type Scared } from '../core/shoujing.ts';
+import { findGhosts, parseWhitelist, type Ghost } from '../core/pudu.ts';
+import * as sys from './system.ts';
 import type { ActionResult, Defiance, FeatureInfo, HookStatus, LedgerView, RitualOutcome, RitualRequest, TempleState } from '../shared/api.ts';
 
 const APP_NAME = '賽博宮';
@@ -25,11 +31,19 @@ const FEATURES: Omit<FeatureInfo, 'enabled'>[] = [
   { id: 'almanac', name: '農民曆宜忌', desc: '忌開市之日不得正式上線', stage: 'M2', available: true },
   { id: 'fortune', name: '籤詩 code review', desc: '靜態檢查結果化為籤詩', stage: 'M3', available: true },
   { id: 'nameology', name: '變數姓名學', desc: '抽籤時算新名字的筆畫吉凶，只建議不擋', stage: 'M3', available: true },
-  { id: 'underworld', name: '陰間回收筒', desc: '「燒給它」與請回陽間', stage: 'M4', available: false },
-  { id: 'shoujing', name: '收驚', desc: '連續當機的程式幫它收驚', stage: 'M4', available: false },
-  { id: 'pudu', name: '中元普渡', desc: '超渡沒有回應與殘留的程式', stage: 'M4', available: false },
+  { id: 'underworld', name: '陰間回收筒', desc: '「燒給它」與請回陽間', stage: 'M4', available: true },
+  { id: 'shoujing', name: '收驚', desc: '連續當機的程式幫它收驚', stage: 'M4', available: true },
+  { id: 'pudu', name: '中元普渡', desc: '超渡沒有回應與殘留的程式', stage: 'M4', available: true },
   { id: 'guaiguai', name: '綠色乖乖', desc: '過期會不乖（效果皆可還原）', stage: 'M5', available: false },
 ];
+
+const underworld = new Underworld({
+  dir: join(dataDir, 'underworld'),
+  fallbackDir: join(app.getPath('desktop'), '賽博宮還陽'),
+  protectedDirs: [dataDir, process.env.SystemRoot ?? '', join(__dirname, '..')].filter(Boolean),
+});
+let scared: Scared[] = [];
+let burnRequests: string[] = [];
 
 let win: BrowserWindow | null = null;
 let tray: Tray | null = null;
@@ -64,6 +78,12 @@ function buildState(): TempleState {
     protectedBranches: protectedBranches(),
     autoFortune: !!settings.autoFortune,
     fortuneRepos: [...new Set([...(settings.fortuneRepos ?? []), ...(settings.hookRepos ?? [])])],
+    souls: soulViews(),
+    underworldDays: settings.underworldDays || 30,
+    scared: settings.closed || settings.features.shoujing === false ? [] : scared,
+    puduWhitelist: settings.puduWhitelist ?? [],
+    puduReminder: puduReminder(),
+    windows: sys.isWindows,
   };
 }
 
@@ -89,6 +109,171 @@ function closeTemple(): TempleState {
 function openTemple(): TempleState {
   store.updateSettings({ closed: false });
   return broadcast();
+}
+
+// ───────── 陰間回收筒 ─────────
+
+function soulViews(): TempleState['souls'] {
+  const days = store.getSettings().underworldDays || 30;
+  const now = today().getTime();
+  return underworld
+    .list()
+    .map((s) => {
+      const d = Math.floor((now - new Date(s.burnedAt).getTime()) / 86400000);
+      return { ...s, days: Math.max(d, 0), overdue: d > days };
+    })
+    .reverse();
+}
+
+/** 從啟動參數裡找出「燒給它」送來的檔案（檔案總管右鍵選單會這樣呼叫）。 */
+function burnArgs(argv: string[]): string[] {
+  // 用 --burn=路徑 的形式：Chromium 會把參數重新排序，分開寫會和其他參數混在一起。
+  return argv.filter((a) => a.startsWith('--burn=')).map((a) => a.slice('--burn='.length)).filter(Boolean);
+}
+
+function queueBurn(paths: string[]): void {
+  if (paths.length === 0) return;
+  burnRequests.push(...paths);
+  showWindow();
+  if (win && !win.webContents.isLoading()) win.webContents.send('underworld:burnRequest', paths);
+}
+
+function burnFiles(paths: string[]): ActionResult {
+  if (store.getSettings().closed) return { ok: false, message: '閉廟中，不收東西。' };
+  if (!featureOn('underworld')) return { ok: false, message: '陰間回收筒已關閉。' };
+  const done: string[] = [];
+  const failed: string[] = [];
+  for (const p of paths) {
+    try {
+      done.push(underworld.burn(p).name);
+    } catch (e) {
+      failed.push(`${p}（${e instanceof Error ? e.message : '失敗'}）`);
+    }
+  }
+  broadcast();
+  return {
+    ok: failed.length === 0,
+    message: [done.length ? `已燒到陰間：${done.join('、')}` : '', failed.length ? `沒燒成：${failed.join('；')}` : ''].filter(Boolean).join('。'),
+  };
+}
+
+function restoreSoul(id: string, forced: boolean): ActionResult {
+  // 還陽永遠可用，閉廟中也一樣：檔案絕對不能拿不回來。
+  try {
+    const r = underworld.restore(id);
+    if (forced) ledger.append({ feature: '陰間回收筒', action: '強制還陽', target: r.soul.originalPath, confession: '' });
+    broadcast();
+    return { ok: true, message: r.relocated ? `原本的位置回不去，已還陽到：${r.restoredTo}` : `已還陽：${r.restoredTo}` };
+  } catch (e) {
+    broadcast();
+    return { ok: false, message: e instanceof Error ? e.message : '還陽失敗' };
+  }
+}
+
+async function releaseSouls(ids: string[]): Promise<ActionResult> {
+  const done: string[] = [];
+  const failed: string[] = [];
+  for (const soul of underworld.list().filter((s) => ids.includes(s.id))) {
+    try {
+      // 超渡 = 移到 Windows 真正的回收筒，仍然可以從那裡救回來。
+      await shell.trashItem(underworld.pathOf(soul));
+      underworld.forget(soul.id);
+      done.push(soul.name);
+    } catch {
+      failed.push(soul.name);
+    }
+  }
+  broadcast();
+  return {
+    ok: failed.length === 0,
+    message: [done.length ? `已超渡到資源回收筒：${done.join('、')}` : '', failed.length ? `沒能超渡（仍留在陰間）：${failed.join('、')}` : ''].filter(Boolean).join('。'),
+  };
+}
+
+function burnCommand(): string {
+  // 開發時要把專案資料夾交給 Electron；打包後執行檔本身就是 App。
+  const appRoot = join(__dirname, '..');
+  return app.isPackaged ? `"${process.execPath}" "--burn=%1"` : `"${process.execPath}" "${appRoot}" "--burn=%1"`;
+}
+
+// ───────── 收驚 ─────────
+
+async function checkCrashes(): Promise<void> {
+  const s = store.getSettings();
+  if (s.closed || s.features.shoujing === false) return;
+  const crashes = await sys.listCrashes(SCARE_WINDOW_MS / 60000);
+  const before = scared.map((x) => x.key).join('|');
+  scared = findScared(crashes, new Date(), s.shoujingHandled ?? []);
+  if (scared.map((x) => x.key).join('|') !== before) {
+    const fresh = scared[0];
+    if (fresh && Notification.isSupported()) {
+      const n = new Notification({ title: '賽博宮：有程式被嚇到了', body: `${fresh.name} 一小時內當掉 ${fresh.count} 次，要不要幫它收驚？` });
+      n.on('click', showWindow);
+      n.show();
+    }
+    broadcast();
+  }
+}
+
+function restartProgram(path: string): ActionResult {
+  if (!path || !existsSync(path)) return { ok: false, message: '找不到這個程式的位置，請自己重新開啟。' };
+  try {
+    spawn(path, [], { detached: true, stdio: 'ignore' }).unref();
+    return { ok: true, message: `已重新啟動 ${path}` };
+  } catch {
+    return { ok: false, message: '啟動失敗，請自己重新開啟。' };
+  }
+}
+
+// ───────── 中元普渡 ─────────
+
+function puduReminder(): TempleState['puduReminder'] {
+  const s = store.getSettings();
+  if (s.closed || s.features.pudu === false) return 'none';
+  const a = getAlmanac(today());
+  if (!a.ghostMonth) return 'none';
+  if (a.zhongyuan) return s.zhongyuanNotified === a.date ? 'none' : 'zhongyuan';
+  return s.puduRemindedYear === today().getFullYear() ? 'none' : 'ghostMonth';
+}
+
+async function currentGhosts(): Promise<Ghost[]> {
+  const procs = await sys.listProcesses();
+  return findGhosts(procs, {
+    now: new Date(),
+    systemRoot: process.env.SystemRoot ?? 'C:\\Windows',
+    selfPids: [process.pid, ...app.getAppMetrics().map((m) => m.pid)],
+    selfPath: process.execPath,
+    whitelist: store.getSettings().puduWhitelist ?? [],
+  });
+}
+
+async function releaseGhosts(pids: number[]): Promise<{ released: string[]; skipped: string[] }> {
+  const released: string[] = [];
+  const skipped: string[] = [];
+  if (store.getSettings().closed) return { released, skipped: ['閉廟中，不辦普渡'] };
+  // 動手前重新確認一次：只結束「現在仍然符合條件」的程式，避免名單過期誤傷。
+  const now = await currentGhosts();
+  for (const pid of pids) {
+    const g = now.find((x) => x.pid === pid);
+    if (!g) {
+      skipped.push(`${pid}（已經不在或不再符合條件）`);
+      continue;
+    }
+    try {
+      process.kill(pid);
+      released.push(g.name);
+    } catch {
+      skipped.push(`${g.name}（結束不了，可能需要系統管理員權限）`);
+    }
+  }
+  return { released, skipped };
+}
+
+function zhongyuanNotify(): void {
+  if (puduReminder() !== 'zhongyuan' || !Notification.isSupported()) return;
+  const n = new Notification({ title: '賽博宮：今日中元', body: '農曆七月十五，要不要辦一場普渡，超渡沒有回應的程式？' });
+  n.on('click', showWindow);
+  n.show();
 }
 
 // ───────── 籤詩 code review ─────────
@@ -294,7 +479,11 @@ if (!app.requestSingleInstanceLock()) {
   app.quit();
 } else {
   app.setName(APP_NAME);
-  app.on('second-instance', showWindow);
+  app.on('second-instance', (_e, argv) => {
+    const paths = burnArgs(argv);
+    if (paths.length) queueBurn(paths);
+    else showWindow();
+  });
   app.on('before-quit', () => {
     quitting = true;
     // 離開前把等著的 push 放行，不留人卡在終端機。
@@ -353,6 +542,52 @@ if (!app.requestSingleInstanceLock()) {
     ipcMain.handle('hook:installGlobal', () => hooks.installGlobalHook(hookPaths, dataDir));
     ipcMain.handle('hook:uninstallGlobal', () => hooks.uninstallGlobalHook(dataDir));
 
+    ipcMain.handle('underworld:choose', async () => {
+      const r = win
+        ? await dialog.showOpenDialog(win, { title: '選擇要燒到陰間的檔案', properties: ['openFile', 'multiSelections'] })
+        : { canceled: true, filePaths: [] as string[] };
+      return r.canceled ? [] : r.filePaths;
+    });
+    ipcMain.handle('underworld:pullBurn', () => {
+      const list = burnRequests;
+      burnRequests = [];
+      return list;
+    });
+    ipcMain.handle('underworld:burn', (_e, paths: string[]) => {
+      burnRequests = [];
+      return burnFiles((paths ?? []).map(String));
+    });
+    ipcMain.handle('underworld:restore', (_e, id: string, forced: boolean) => restoreSoul(String(id), !!forced));
+    ipcMain.handle('underworld:release', (_e, ids: string[]) => releaseSouls((ids ?? []).map(String)));
+    ipcMain.handle('underworld:menuStatus', () => sys.contextMenuInstalled());
+    ipcMain.handle('underworld:menuSet', (_e, on: boolean) =>
+      on ? sys.installContextMenu(burnCommand(), process.execPath) : sys.uninstallContextMenu(),
+    );
+
+    ipcMain.handle('shoujing:check', async () => {
+      await checkCrashes();
+      return buildState();
+    });
+    ipcMain.handle('shoujing:finish', (_e, key: string) => {
+      const handled = [...(store.getSettings().shoujingHandled ?? []), String(key)].slice(-50);
+      store.updateSettings({ shoujingHandled: handled });
+      scared = scared.filter((x) => x.key !== key);
+      return broadcast();
+    });
+    ipcMain.handle('shoujing:restart', (_e, path: string) => restartProgram(String(path)));
+
+    ipcMain.handle('pudu:find', () => (store.getSettings().closed ? [] : currentGhosts()));
+    ipcMain.handle('pudu:release', (_e, pids: number[]) => releaseGhosts((pids ?? []).map(Number)));
+    ipcMain.handle('pudu:setWhitelist', (_e, text: string) => {
+      store.updateSettings({ puduWhitelist: parseWhitelist(String(text ?? '')) });
+      return broadcast();
+    });
+    ipcMain.handle('pudu:dismissReminder', () => {
+      const a = getAlmanac(today());
+      store.updateSettings(a.zhongyuan ? { zhongyuanNotified: a.date } : { puduRemindedYear: today().getFullYear() });
+      return broadcast();
+    });
+
     ipcMain.handle('fortune:draw', async (_e, dir: string) => {
       if (store.getSettings().closed) return { ok: false, message: '閉廟中，不抽籤。' };
       if (!featureOn('fortune')) return { ok: false, message: '籤詩 code review 已關閉。' };
@@ -372,5 +607,12 @@ if (!app.requestSingleInstanceLock()) {
     hookServer.start();
     createTray();
     createWindow();
+
+    // 檔案總管右鍵「燒給它」啟動 App 時，檔案路徑在啟動參數裡。
+    burnRequests = burnArgs(process.argv);
+    // 收驚：開門時看一次，之後每五分鐘看一次當機紀錄。
+    void checkCrashes();
+    setInterval(() => void checkCrashes(), 5 * 60 * 1000).unref();
+    zhongyuanNotify();
   });
 }

@@ -6,6 +6,8 @@ declare module 'lunar-javascript' {
     getYearShengXiao(): string;
     getMonthInChinese(): string;
     getDayInChinese(): string;
+    getMonth(): number;
+    getDay(): number;
   }
   export interface SolarInstance {
     getLunar(): Lunar;

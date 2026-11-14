@@ -153,3 +153,37 @@ tr.broken td { background: rgba(192, 57, 43, .25); }
 .side { grid-column: 2; grid-row: 1 / span 3; }
 .push, .fortune { grid-column: 1; }
 @media (max-width: 860px) { .side { grid-column: 1; grid-row: auto; } }
+
+.underworld, .shoujing, .pudu { grid-column: 1; }
+.side { grid-row: 1 / span 6; }
+.souls li { display: flex; align-items: center; gap: 8px; padding: 6px 0; font-size: 13px; border-top: 1px dashed var(--line); }
+.souls li:first-child { border-top: 0; }
+.souls .info { flex: 1; min-width: 0; }
+.souls .info b { font-weight: normal; font-size: 14px; color: var(--text); }
+.souls .info code { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.souls .days { color: var(--muted); white-space: nowrap; }
+.souls .days.overdue { color: var(--gold); }
+.remind { background: #3a2412; border: 1px solid var(--gold); border-radius: 6px; padding: 6px 10px; margin-bottom: 4px; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+#uw-msg.bad, #sj-msg.bad, #pudu-msg.bad { color: var(--bad); } #uw-msg.ok, #sj-msg.ok, #pudu-msg.ok { color: var(--ok); }
+.rite .altar { position: relative; height: 230px; background: radial-gradient(ellipse at 50% 40%, #5a1a10, #230c08 75%); border: 1px solid var(--line); border-radius: 8px; overflow: hidden; display: grid; place-items: center; }
+.burner.big { position: absolute; top: auto; bottom: 34px; width: 70px; height: 34px; }
+.orbit { position: absolute; left: 50%; top: 46%; width: 0; height: 0; }
+.cloth { position: absolute; width: 190px; margin-left: -95px; margin-top: -40px; padding: 8px 10px; background: #f4e6c8; color: #3a1a10; border-radius: 4px; font-size: 12px; line-height: 1.5; box-shadow: 0 4px 14px rgba(0, 0, 0, .5); }
+.cloth b { display: block; font-size: 14px; }
+.orbit.go .cloth { animation: circle 2.6s linear 3; }
+@keyframes circle { from { transform: rotate(0deg) translateX(150px) rotate(0deg); } to { transform: rotate(360deg) translateX(150px) rotate(-360deg); } }
+.chant { text-align: center; color: var(--gold); line-height: 2; margin: 10px 0 0; min-height: 2em; }
+.chant span { display: block; animation: pop2 .5s ease-out; }
+@keyframes pop2 { from { opacity: 0; transform: translateY(6px); } }
+.pudu-altar { height: 260px; }
+.pudu-altar .chant { position: absolute; left: 0; right: 0; bottom: 4px; margin: 0; font-size: 14px; }
+.offerings { position: absolute; bottom: 86px; display: flex; gap: 14px; }
+.offerings b { width: 44px; height: 44px; border-radius: 50%; background: #f4e6c8; color: #7d1d14; display: grid; place-items: center; font-weight: normal; font-size: 18px; border: 2px solid var(--gold-dim); }
+.lanterns { position: absolute; inset: 0; }
+.lanterns i { position: absolute; bottom: -30px; width: 22px; height: 28px; border-radius: 8px 8px 4px 4px; background: radial-gradient(#ffd27a, #e0672a); opacity: .85; animation: rise 3.4s ease-in infinite; }
+.lanterns i:nth-child(1) { left: 12%; animation-delay: 0s; } .lanterns i:nth-child(2) { left: 30%; animation-delay: .9s; }
+.lanterns i:nth-child(3) { left: 68%; animation-delay: .4s; } .lanterns i:nth-child(4) { left: 84%; animation-delay: 1.5s; } .lanterns i:nth-child(5) { left: 50%; animation-delay: 2.1s; }
+@keyframes rise { to { transform: translateY(-300px); opacity: 0; } }
+#pudu-body td:first-child { width: 28px; } #pudu-body input { width: 17px; height: 17px; accent-color: var(--gold); }
+#pudu-body td:last-child { font-family: Consolas, monospace; font-size: 12px; color: var(--muted); word-break: break-all; }
+@media (prefers-reduced-motion: reduce) { .orbit.go .cloth, .lanterns i { animation-duration: .01s; animation-iteration-count: 1; } }

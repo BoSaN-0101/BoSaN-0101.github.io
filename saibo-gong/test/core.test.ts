@@ -217,3 +217,100 @@ test('變數姓名學：筆畫、八十一數理、找出宣告的名字', () =>
   assert.deepEqual(declaredNames('python', ['def run(x):', 'total = 0', 'for item in xs:', '    if total == 3:  # hi']).sort(), ['item', 'run', 'total']);
   assert.deepEqual(declaredNames('js', ['const a = 1, b = 2;', 'function go() {', 'let 計數 = 0;']).sort(), ['a', 'go', '計數']);
 });
+
+import { Underworld } from '../src/core/underworld.ts';
+import { findScared, shoujingText } from '../src/core/shoujing.ts';
+import { findGhosts, exclusionReason, type Proc } from '../src/core/pudu.ts';
+import { mkdirSync as mk, existsSync as ex } from 'node:fs';
+
+test('陰間：燒進去、還陽回原位、同名改名、原位置回不去也一定成功', () => {
+  const root = tmp();
+  const uw = new Underworld({ dir: join(root, 'uw'), fallbackDir: join(root, 'fallback'), protectedDirs: [join(root, 'sys')] });
+  mk(join(root, 'docs', 'sub'), { recursive: true });
+  mk(join(root, 'sys'));
+  writeFileSync(join(root, 'docs', 'a.txt'), 'hello');
+  writeFileSync(join(root, 'docs', 'sub', 'b.txt'), 'inner');
+  writeFileSync(join(root, 'sys', 'x.dll'), 'x');
+
+  const soul = uw.burn(join(root, 'docs', 'a.txt'));
+  assert.equal(ex(join(root, 'docs', 'a.txt')), false);
+  assert.equal(readFileSync(uw.pathOf(soul), 'utf8'), 'hello');
+  assert.equal(uw.list().length, 1);
+  let r = uw.restore(soul.id);
+  assert.equal(r.restoredTo, join(root, 'docs', 'a.txt'));
+  assert.equal(readFileSync(r.restoredTo, 'utf8'), 'hello');
+  assert.equal(uw.list().length, 0);
+
+  // 原位置已經有同名檔案 → 改名，不覆蓋
+  const s2 = uw.burn(join(root, 'docs', 'a.txt'));
+  writeFileSync(join(root, 'docs', 'a.txt'), 'newer');
+  r = uw.restore(s2.id);
+  assert.equal(r.restoredTo, join(root, 'docs', 'a（還陽）.txt'));
+  assert.equal(readFileSync(join(root, 'docs', 'a.txt'), 'utf8'), 'newer');
+
+  // 整個資料夾也能燒；原本的上層資料夾被改成檔案（回不去）→ 放到備用位置
+  const s3 = uw.burn(join(root, 'docs', 'sub'));
+  assert.equal(s3.isDir, true);
+  rmSync(join(root, 'docs'), { recursive: true });
+  writeFileSync(join(root, 'docs'), 'now a file');
+  r = uw.restore(s3.id);
+  assert.equal(r.relocated, true);
+  assert.equal(readFileSync(join(root, 'fallback', 'sub', 'b.txt'), 'utf8'), 'inner');
+
+  // 不准燒的東西
+  assert.throws(() => uw.burn(join(root, 'sys', 'x.dll')), /不能燒/);
+  assert.throws(() => uw.burn(join(root, 'uw')), /不能燒/);
+  assert.throws(() => uw.burn(root), /不能燒/);
+  assert.throws(() => uw.burn(join(root, 'nope')), /找不到/);
+
+  // 超過期限的才提議超渡
+  writeFileSync(join(root, 'old.txt'), 'old');
+  const s4 = uw.burn(join(root, 'old.txt'), new Date(Date.now() - 31 * 86400000));
+  assert.deepEqual(uw.overdue(30).map((s) => s.id), [s4.id]);
+  assert.equal(uw.overdue(40).length, 0);
+  rmSync(root, { recursive: true });
+});
+
+test('收驚：一小時內當三次才算被嚇到，收過的不再提', () => {
+  const now = new Date('2026-11-14T12:00:00Z');
+  const at = (min: number, name = 'Foo.exe') => ({ time: new Date(now.getTime() - min * 60000).toISOString(), name, module: 'bar.dll', code: 'c0000005', path: `C:\\Apps\\${name}` });
+  assert.equal(findScared([at(5), at(20)], now).length, 0);
+  assert.equal(findScared([at(5), at(20), at(70)], now).length, 0);
+  const s = findScared([at(5), at(20), at(50, 'foo.exe'), at(10, 'Other.exe')], now);
+  assert.equal(s.length, 1);
+  assert.equal(s[0].count, 3);
+  assert.equal(s[0].path, 'C:\\Apps\\Foo.exe');
+  assert.equal(findScared([at(5), at(20), at(50)], now, [s[0].key]).length, 0);
+  assert.equal(findScared([at(1), at(5), at(20), at(50)], now, [s[0].key]).length, 1);
+  assert.ok(shoujingText('Foo.exe').join('').includes('Foo.exe'));
+});
+
+test('普渡：只挑沒回應或久未活動的，系統、服務、防毒、自己、白名單一律排除', () => {
+  const now = new Date('2026-11-14T12:00:00Z');
+  const ctx = { now, systemRoot: 'C:\\Windows', selfPids: [999], selfPath: 'C:\\Apps\\saibo\\electron.exe', whitelist: ['keepme'] };
+  const p = (o: Partial<Proc>): Proc => ({ pid: 1, name: 'app', path: 'C:\\Apps\\app.exe', mySession: true, hasWindow: false, title: '', responding: true,
+    start: new Date(now.getTime() - 5 * 3600000).toISOString(), cpu: 1, service: false, ...o });
+  const ghosts = findGhosts([
+    p({ pid: 10, name: 'frozen', hasWindow: true, responding: false }),
+    p({ pid: 11, name: 'idlebg' }),
+    p({ pid: 12, name: 'busybg', cpu: 600 }),
+    p({ pid: 13, name: 'newbg', start: new Date(now.getTime() - 600000).toISOString() }),
+    p({ pid: 14, name: 'fine', hasWindow: true }),
+    p({ pid: 15, name: 'notepad', path: 'C:\\Windows\\System32\\notepad.exe', hasWindow: true, responding: false }),
+    p({ pid: 16, name: 'svc', service: true }),
+    p({ pid: 17, name: 'MsMpEng', path: 'C:\\ProgramData\\Microsoft\\Windows Defender\\Platform\\MsMpEng.exe' }),
+    p({ pid: 999, name: 'electron' }),
+    p({ pid: 18, name: 'electron', path: 'C:\\Apps\\saibo\\electron.exe' }),
+    p({ pid: 19, name: 'KeepMe.exe' }),
+    p({ pid: 20, name: 'other', mySession: false }),
+    p({ pid: 21, name: 'nopath', path: null }),
+  ], ctx);
+  assert.deepEqual(ghosts.map((g) => [g.pid, g.kind]), [[10, 'hung'], [11, 'lingering']]);
+  assert.equal(exclusionReason(p({ name: 'avastui', path: 'C:\\Program Files\\Avast Software\\Avast\\AvastUI.exe' }), ctx), '防毒軟體');
+});
+
+test('農民曆：認得農曆七月和中元正日', () => {
+  assert.equal(getAlmanac(new Date(2026, 7, 27)).zhongyuan, true);
+  assert.equal(getAlmanac(new Date(2026, 7, 27)).ghostMonth, true);
+  assert.equal(getAlmanac(new Date(2026, 10, 14)).ghostMonth, false);
+});
