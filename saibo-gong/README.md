@@ -4,9 +4,19 @@
 
 目前進度：**M5，規格裡的五個階段都已實作**（擲筊引擎、功過簿、主殿、系統匣、擲筊 push、農民曆宜忌、籤詩 code review、變數姓名學、陰間回收筒、收驚、中元普渡、綠色乖乖）。
 
-## 在 Windows 上試用
+## 安裝
 
-需要先裝 [Node.js](https://nodejs.org/) 22 以上。
+執行 `SaiboGong-Setup-<版本>.exe`。安裝檔沒有數位簽章，Windows 可能跳出「Windows 已保護您的電腦」：點「其他資訊」→「仍要執行」。
+
+- 預設只裝給目前的使用者（`%LOCALAPPDATA%\Programs\SaiboGong`），不需要系統管理員權限，安裝時可以改位置。
+- 開始功能表和桌面會有「賽博宮」捷徑。
+- 解除安裝不會刪掉 `%APPDATA%\DigitalTemple\`（功過簿、陰間的檔案都在這裡）。
+
+**從 `npm start` 換成安裝版時**：之前安裝的擲筊 push hook 和右鍵選單都還指著原始碼資料夾裡的程式，請在主殿把它們移除再重新安裝一次。
+
+## 從原始碼執行
+
+需要 [Node.js](https://nodejs.org/) 22 以上。
 
 ```
 cd saibo-gong
@@ -113,7 +123,8 @@ App 被強制結束時桌布會暫時維持歪的，下次開啟後用上面任�
 |---|---|
 | `npm test` | 核心邏輯測試（擲筊、功過簿、懺悔文、農民曆、push 判斷、籤詩、姓名學、陰間、收驚、普渡、乖乖） |
 | `npm run typecheck` | 型別檢查 |
-| `npm run build` | 打包到 `dist/` |
+| `npm run build` | 編譯到 `dist/` |
+| `npm run dist` | 做出 Windows 安裝檔到 `release/`。在 Windows 上直接執行；在 Linux 上需要 wine64 和 wine32 |
 
 程式碼分成 `src/core`（不碰畫面的邏輯）、`src/main`（Electron 主程序、系統匣、git hook 用的小程式）、`src/renderer`（主殿畫面）。
 
