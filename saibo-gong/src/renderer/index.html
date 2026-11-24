@@ -1,0 +1,263 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self'; script-src 'self'; img-src 'self' data: blob:; media-src 'self' blob:">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>賽博宮</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header class="top">
+  <h1>賽博宮</h1>
+  <span id="status" class="pill">開廟中</span>
+  <span class="spacer"></span>
+  <button id="btn-close-temple" class="btn danger" title="一鍵暫停所有功能。閉廟會記入功過簿。">閉廟</button>
+</header>
+
+<div id="tamper" class="tamper" hidden>
+  <strong>功過簿遭竄改</strong><span id="tamper-reason"></span>
+  <button id="btn-tamper-open" class="btn small">翻閱功過簿</button>
+</div>
+
+<main>
+  <section class="hall">
+    <div id="ritual-banner" class="ritual-banner" hidden></div>
+    <div class="stage" id="stage">
+      <div class="scene" aria-hidden="true">
+        <div class="plaque">賽博宮</div>
+        <div class="curtain left"></div><div class="curtain right"></div>
+        <div class="burner"><i></i><i></i><i></i></div>
+        <div class="table"></div>
+        <div class="floor"></div>
+      </div>
+      <canvas id="poe" width="720" height="460"></canvas>
+      <div id="hint" class="hint">按住筊，甩出去再放開</div>
+      <div id="result" class="result" hidden><b id="result-name"></b><span id="result-desc"></span></div>
+      <div id="closed-veil" class="veil" hidden><b>閉廟中</b><span>所有功能暫停</span></div>
+    </div>
+    <div class="controls">
+      <span id="mode-label" class="mode">問事（不限次數）</span>
+      <span class="spacer"></span>
+      <button id="btn-auto" class="btn">代為擲筊</button>
+      <button id="btn-defy" class="btn danger" hidden>硬闖</button>
+      <button id="btn-giveup" class="btn ghost" hidden>作罷</button>
+      <button id="btn-drill" class="btn ghost" title="照 push 的規矩走一遍：三次為限，擲不到可硬闖。演練不記功過簿。">演練 push 儀式</button>
+    </div>
+  </section>
+
+  <aside class="side">
+    <section class="card">
+      <h2>今日農民曆</h2>
+      <p id="today" class="big"></p>
+      <p id="lunar" class="muted"></p>
+      <p id="kaishi" class="badge"></p>
+      <dl class="yiji"><dt class="yi">宜</dt><dd id="yi"></dd><dt class="ji">忌</dt><dd id="ji"></dd></dl>
+    </section>
+    <section class="card">
+      <h2>綠色乖乖</h2>
+      <p id="gg-status" class="big"></p>
+      <p id="gg-detail" class="muted"></p>
+      <div class="row">
+        <button id="btn-gg-new" class="btn small">供奉新乖乖</button>
+        <button id="btn-gg-pacify" class="btn small" hidden title="停用不乖效果一小時，不記功過簿">暫時安撫</button>
+      </div>
+    </section>
+    <section class="card">
+      <h2>擲筊統計</h2>
+      <div class="stats" id="stats"></div>
+      <p id="push-stats" class="muted"></p>
+    </section>
+    <section class="card" id="card-confess">
+      <h2>懺悔文長度</h2>
+      <div id="confess-length" class="seg" role="radiogroup" aria-label="懺悔文長度"></div>
+      <p class="muted">硬闖時要逐字打完的那一段。越長越擋人。</p>
+    </section>
+    <section class="card">
+      <h2>最近的功過簿 <button id="btn-ledger" class="btn small">翻閱</button></h2>
+      <ul id="recent" class="recent"></ul>
+    </section>
+  </aside>
+
+  <section class="card push">
+    <h2>擲筊 push</h2>
+    <p id="hook-status" class="muted"></p>
+    <ul id="hook-repos" class="repos"></ul>
+    <div class="row">
+      <button id="btn-hook-repo" class="btn">為某個 repo 安裝</button>
+      <button id="btn-hook-global" class="btn">全域安裝</button>
+      <span class="spacer"></span>
+      <label for="protected">正式上線的分支</label>
+      <input id="protected" type="text" spellcheck="false" autocomplete="off">
+    </div>
+    <p id="hook-msg" class="muted" role="status"></p>
+  </section>
+
+  <section class="card fortune">
+    <h2>籤詩 code review</h2>
+    <div class="row">
+      <select id="fortune-repo" aria-label="要抽籤的 repo"></select>
+      <button id="btn-fortune" class="btn">抽籤</button>
+      <span class="spacer"></span>
+      <label><input id="auto-fortune" type="checkbox"> push 前自動抽籤（只顯示，不擋）</label>
+    </div>
+    <p id="fortune-last" class="muted"></p>
+    <p id="fortune-msg" class="muted" role="status"></p>
+  </section>
+
+  <section class="card underworld">
+    <h2>陰間回收筒</h2>
+    <ul id="souls" class="souls"></ul>
+    <div class="row">
+      <button id="btn-burn" class="btn">燒給它…</button>
+      <button id="btn-release-overdue" class="btn" hidden></button>
+      <span class="spacer"></span>
+      <label><input id="uw-menu" type="checkbox"> 檔案總管右鍵選單「燒給它」</label>
+    </div>
+    <p id="uw-msg" class="muted" role="status"></p>
+  </section>
+
+  <section class="card shoujing">
+    <h2>收驚 <button id="btn-crash-check" class="btn small">重新檢查</button></h2>
+    <ul id="scared" class="souls"></ul>
+    <p id="sj-msg" class="muted" role="status"></p>
+  </section>
+
+  <section class="card pudu">
+    <h2>中元普渡</h2>
+    <p id="pudu-remind" class="remind" hidden></p>
+    <div class="row">
+      <button id="btn-pudu" class="btn">辦小普渡</button>
+      <span class="spacer"></span>
+      <label for="pudu-white">永遠不碰的程式</label>
+      <input id="pudu-white" type="text" spellcheck="false" autocomplete="off" placeholder="例如 obs64, steam">
+    </div>
+    <p id="pudu-msg" class="muted" role="status"></p>
+  </section>
+
+  <section class="card features">
+    <h2>各殿功能</h2>
+    <ul id="features"></ul>
+  </section>
+</main>
+
+<dialog id="dlg-ledger" class="dlg wide">
+  <header><h2>功過簿</h2><input id="ledger-search" type="search" placeholder="搜尋功能、行為、對象、懺悔文"><button class="btn small" data-close>闔上</button></header>
+  <p id="ledger-warn" class="warn" hidden></p>
+  <p class="muted">只能翻閱，不能修改或刪除。存放位置：<code id="data-dir"></code></p>
+  <div class="tablewrap"><table>
+    <thead><tr><th>#</th><th>時間</th><th>功能</th><th>行為</th><th>對象</th><th>懺悔文</th></tr></thead>
+    <tbody id="ledger-body"></tbody>
+  </table></div>
+  <p id="ledger-empty" class="muted" hidden>功過簿上還是一片空白。</p>
+</dialog>
+
+<dialog id="dlg-confess" class="dlg">
+  <header><h2>懺悔文</h2></header>
+  <p id="confess-text" class="confess-text"></p>
+  <textarea id="confess-input" rows="5" spellcheck="false" autocomplete="off" placeholder="在這裡照著打"></textarea>
+  <footer>
+    <span id="confess-msg" class="muted"></span>
+    <span class="spacer"></span>
+    <button id="confess-cancel" class="btn ghost">作罷</button>
+    <button id="confess-ok" class="btn danger" disabled>弟子知錯，硬闖</button>
+  </footer>
+</dialog>
+
+<dialog id="dlg-fortune" class="dlg wide fortune-dlg">
+  <header><h2 id="f-title">籤詩</h2><span id="f-sub" class="muted"></span><span class="spacer"></span><button class="btn small" data-close>收起</button></header>
+  <div class="f-body">
+    <div id="f-poem" class="poem"></div>
+    <p id="f-nodraw" class="warn" hidden></p>
+    <section id="f-jie-sec"><h3>解曰</h3><ul id="f-jie"></ul></section>
+    <section id="f-issues-sec"><h3>白話 <span id="f-count" class="muted"></span></h3>
+      <div class="tablewrap"><table>
+        <thead><tr><th>位置</th><th>等級</th><th>規則</th><th>問題（檢查工具原文）</th></tr></thead>
+        <tbody id="f-issues"></tbody>
+      </table></div>
+    </section>
+    <section id="f-names-sec"><h3>宜改名</h3><ul id="f-names" class="names"></ul><p id="f-names-note" class="muted"></p></section>
+    <section><h3>審視範圍</h3><ul id="f-tools" class="tools"></ul></section>
+  </div>
+</dialog>
+
+<dialog id="dlg-shoujing" class="dlg rite">
+  <header><h2>收驚</h2></header>
+  <div class="altar">
+    <div class="orbit"><div id="sj-cloth" class="cloth"></div></div>
+    <div class="burner big"><i></i><i></i><i></i></div>
+  </div>
+  <div id="sj-text" class="chant"></div>
+  <p id="sj-ask" class="confirm-body" hidden></p>
+  <footer>
+    <span class="spacer"></span>
+    <button id="sj-no" class="btn ghost" hidden>不用</button>
+    <button id="sj-yes" class="btn" hidden>重新啟動</button>
+  </footer>
+</dialog>
+
+<dialog id="dlg-pudu" class="dlg wide rite">
+  <header><h2>普渡</h2><span class="spacer"></span><button id="pudu-close" class="btn small" hidden>收壇</button></header>
+  <div id="pudu-anim" class="altar pudu-altar">
+    <div class="lanterns"><i></i><i></i><i></i><i></i><i></i></div>
+    <div class="offerings"><b>飯</b><b>菜</b><b>果</b><b>酒</b><b>餅</b></div>
+    <div class="burner big"><i></i><i></i><i></i></div>
+    <p class="chant">一請四方好兄弟，二請無主諸程式，香火已備，前來享用。</p>
+  </div>
+  <div id="pudu-list" hidden>
+    <p id="pudu-summary" class="confirm-body"></p>
+    <div class="tablewrap"><table>
+      <thead><tr><th></th><th>程式</th><th>狀況</th><th>已執行</th><th>位置</th></tr></thead>
+      <tbody id="pudu-body"></tbody>
+    </table></div>
+    <p id="pudu-result" class="confirm-body" role="status"></p>
+    <footer>
+      <span class="spacer"></span>
+      <button id="pudu-cancel" class="btn ghost">不超渡</button>
+      <button id="pudu-go" class="btn danger">超渡勾選的</button>
+    </footer>
+  </div>
+</dialog>
+
+<dialog id="dlg-gg" class="dlg">
+  <header><h2>供奉綠色乖乖</h2></header>
+  <p class="muted">拍下或上傳包裝的照片，要拍到有效日期。照片只在這台電腦上辨識，不會傳出去。</p>
+  <div class="row">
+    <button id="gg-camera" class="btn">開鏡頭</button>
+    <button id="gg-shoot" class="btn" hidden>拍照</button>
+    <button id="gg-upload" class="btn">上傳照片</button>
+    <input id="gg-file" type="file" accept="image/*" hidden>
+  </div>
+  <video id="gg-video" class="gg-view" autoplay playsinline muted hidden></video>
+  <canvas id="gg-canvas" class="gg-view" hidden></canvas>
+  <p id="gg-color" role="status"></p>
+  <div class="row">
+    <label for="gg-date">有效日期</label>
+    <input id="gg-date" type="date">
+    <span id="gg-ocr" class="muted" role="status"></span>
+  </div>
+  <footer>
+    <span class="spacer"></span>
+    <button id="gg-cancel" class="btn ghost">取消</button>
+    <button id="gg-ok" class="btn" disabled>供奉</button>
+  </footer>
+</dialog>
+
+<dialog id="dlg-confirm" class="dlg">
+  <header><h2 id="confirm-title"></h2></header>
+  <p id="confirm-body" class="confirm-body"></p>
+  <footer>
+    <span class="spacer"></span>
+    <button id="confirm-cancel" class="btn ghost">取消</button>
+    <button id="confirm-ok" class="btn">確定</button>
+  </footer>
+</dialog>
+
+<div id="toast" class="toast" role="status" hidden>
+  <span>懺悔文太長或太短？可以在右側的「懺悔文長度」調整。</span>
+  <button id="toast-close" class="btn small ghost">知道了</button>
+</div>
+
+<script src="renderer.js"></script>
+</body>
+</html>
