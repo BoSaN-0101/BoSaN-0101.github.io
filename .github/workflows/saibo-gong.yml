@@ -1,0 +1,54 @@
+# 賽博宮：在 Windows 上跑測試並做出安裝檔。
+# - 改到 saibo-gong/ 的 pull request：跑測試、做安裝檔（可從這次執行的 Artifacts 下載）
+# - 推 saibo-gong-v* 標籤：另外建立 GitHub Release，附上安裝檔
+name: 賽博宮
+
+on:
+  pull_request:
+    paths: ['saibo-gong/**', '.github/workflows/saibo-gong.yml']
+  push:
+    tags: ['saibo-gong-v*']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    defaults:
+      run:
+        working-directory: saibo-gong
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: saibo-gong/package-lock.json
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm test
+      - run: npm run dist
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+      - uses: actions/upload-artifact@v4
+        with:
+          name: SaiboGong-Setup
+          path: saibo-gong/release/SaiboGong-Setup-*.exe
+          if-no-files-found: error
+      - name: 建立 Release
+        if: startsWith(github.ref, 'refs/tags/saibo-gong-v')
+        uses: softprops/action-gh-release@v2
+        with:
+          name: 賽博宮 ${{ github.ref_name }}
+          prerelease: true
+          files: saibo-gong/release/SaiboGong-Setup-*.exe
+          body: |
+            賽博宮：把台灣民俗儀式套進寫程式日常的 Windows 桌面 App。
+
+            **安裝**：下載下面的 `SaiboGong-Setup-*.exe` 執行。安裝檔沒有數位簽章，Windows 跳出「Windows 已保護您的電腦」時，點「其他資訊」→「仍要執行」。
+
+            功能：擲筊 push、農民曆宜忌、籤詩 code review、變數姓名學、陰間回收筒、收驚、中元普渡、綠色乖乖，以及只能新增的功過簿。詳細說明見 [saibo-gong/README.md](https://github.com/${{ github.repository }}/blob/main/saibo-gong/README.md)。
+
+            這是第一個版本，部分 Windows 系統功能（收驚、普渡、右鍵選單、桌布、游標）尚未在實機上完整驗證，因此標為預先發行版。
